@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "prometheus": {
+      "command": "c:\\sentinel-x\\mcp-servers\\prometheus\\.venv\\Scripts\\python.exe",
+      "args": [
+        "c:\\sentinel-x\\mcp-servers\\prometheus\\src\\server.py"
+      ]
+    }
+  }
+}
