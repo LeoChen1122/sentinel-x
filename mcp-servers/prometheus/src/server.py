@@ -12,6 +12,10 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
 from tools.prom_query import PROM_QUERY_TOOL_META, prom_query as run_prom_query
+from tools.prom_query_range import (
+    PROM_QUERY_RANGE_TOOL_META,
+    prom_query_range as run_prom_query_range,
+)
 
 mcp = FastMCP("prometheus")
 
@@ -23,6 +27,20 @@ mcp = FastMCP("prometheus")
 def prom_query(promql: str, time: str | float | int | None = None) -> dict[str, Any]:
     """Run an instant PromQL query against Prometheus and return normalized results."""
     return run_prom_query(promql, time=time)
+
+
+@mcp.tool(
+    annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False),
+    meta=PROM_QUERY_RANGE_TOOL_META,
+)
+def prom_query_range(
+    promql: str,
+    start: str | float | int,
+    end: str | float | int,
+    step: str | int,
+) -> dict[str, Any]:
+    """Run a PromQL range query (start, end, step) and return normalized results."""
+    return run_prom_query_range(promql, start, end, step)
 
 
 if __name__ == "__main__":

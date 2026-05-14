@@ -1,0 +1,5 @@
+# Python / pytest artifacts (do not delete __pycache__ under .venv with bulk scripts)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
