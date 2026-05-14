@@ -150,12 +150,11 @@ If workload continues to grow, consider HPA or memory optimization.
 
 ------
 
-## 📌 高光亮点（简历示例）
+## 📌 高光亮点
 
 - 架构创新：多Agent协同 + MCP标准化工具接入
 - 安全突破：沙箱预演-生产执行双阶段机制
 - 效果量化：CPU飙升 & Pod CrashLoopBackOff自动识别与修复，平均修复时间缩短至45秒
-- 开源影响力：1.2k+ Stars，收录至 Awesome-LangChain
 
 ------
 
