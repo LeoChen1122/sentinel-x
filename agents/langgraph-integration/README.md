@@ -242,6 +242,36 @@ $env:LANGGRAPH_RUN_LIVE = "1"
 python scripts\full_pipeline_demo.py --live --thread-id step8-demo
 ```
 
+## Agent phase A: inspection narrative (mock, no LLM)
+
+Graph flow: `ingest → gather → narrate → query → END` ([`langgraph-server/src/graph.py`](../langgraph-server/src/graph.py)).
+
+| `payload` field | Role |
+|-----------------|------|
+| `inspect` | `{cluster_id, namespace, pod_name}` — triggers gather/narrate |
+| `gather` | Subgraph + `run_query` facts |
+| `narrative` | `InspectionReport` (markdown, sections, linked_events/pods) |
+| `query` | Optional legacy `run_query` (step 6) |
+
+```python
+from agent import build_inspection_report
+
+report = build_inspection_report(
+    payload,
+    cluster_id="dev-cluster",
+    namespace="default",
+    pod_name="shared-pod",
+)
+print(report["markdown"])
+```
+
+```powershell
+python -m unittest tests.test_agent_narrative -v
+python scripts\inspect_narrative_demo.py
+```
+
+**linked_events** = `events_for_pod` (`has_event` edges). **linked_pods** = `inspections_for_pod` (`inspects_pod`).
+
 ## Multicluster acceptance (mock)
 
 Validates Node / Inspection IDs and edges, Adapter stability, Query with `cluster_id`, and per-cluster LangGraph `thread_id` (no live K8s required).

@@ -6,11 +6,13 @@ from typing import Annotated, Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
-# Reuse integration query logic (monorepo layout: agents/langgraph-integration/src).
+# Reuse integration query + agent logic (monorepo layout).
 _INTEGRATION_SRC = Path(__file__).resolve().parents[2] / "langgraph-integration" / "src"
 if str(_INTEGRATION_SRC) not in sys.path:
     sys.path.insert(0, str(_INTEGRATION_SRC))
 
+from agent.gather import gather_subgraph, parse_inspect_request  # noqa: E402
+from agent.narrative import build_report_from_gather_dict  # noqa: E402
 from query.graph_view import GraphView  # noqa: E402
 from query.operations import run_query  # noqa: E402
 
@@ -82,6 +84,33 @@ def ingest(state: State) -> State:
     return {"payload": payload}
 
 
+def gather(state: State) -> State:
+    """Run scoped queries when ``payload.inspect`` is set; write ``payload.gather``."""
+    payload = dict(state.get("payload") or {})
+    req = parse_inspect_request(payload)
+    if req is None:
+        return {"payload": payload}
+    gather_result = gather_subgraph(
+        payload,
+        cluster_id=req["cluster_id"],
+        namespace=req["namespace"],
+        pod_name=req["pod_name"],
+    )
+    payload["gather"] = dict(gather_result)
+    return {"payload": payload}
+
+
+def narrate(state: State) -> State:
+    """Build template inspection report from ``payload.gather`` → ``payload.narrative``."""
+    payload = dict(state.get("payload") or {})
+    raw_gather = payload.get("gather")
+    if not isinstance(raw_gather, dict):
+        return {"payload": payload}
+    report = build_report_from_gather_dict(raw_gather)
+    payload["narrative"] = dict(report)
+    return {"payload": payload}
+
+
 def query(state: State) -> State:
     """Run ``payload.query`` against accumulated graph; set ``query_result``."""
     payload = dict(state.get("payload") or {})
@@ -95,9 +124,13 @@ def query(state: State) -> State:
 
 builder = StateGraph(State)
 builder.add_node("ingest", ingest)
+builder.add_node("gather", gather)
+builder.add_node("narrate", narrate)
 builder.add_node("query", query)
 builder.add_edge(START, "ingest")
-builder.add_edge("ingest", "query")
+builder.add_edge("ingest", "gather")
+builder.add_edge("gather", "narrate")
+builder.add_edge("narrate", "query")
 builder.add_edge("query", END)
 
 graph = builder.compile()
