@@ -17,8 +17,9 @@ from adapter.types import McpListResponse
 from clients.langgraph_client import stream_sentinel_run
 from langgraph_sdk.client import SyncLangGraphClient
 from models.entities import GraphBatch
+from models.scope import resolve_cluster_id, sync_thread_id
 from sync.retry import retry_call
-from sync.state import SyncState
+from sync.state import SyncState, SyncStateRegistry
 from utils.batching import chunk_graph_batch
 from utils.graph_merge import merge_graph_batches
 
@@ -54,6 +55,26 @@ class SyncPushResult:
 
 def _consume_stream(stream: Iterator[Any]) -> list[Any]:
     return list(stream)
+
+
+def _resolve_sync_scope(
+    *mcps: McpListResponse,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
+    thread_id: str | None = None,
+    state: SyncState | None = None,
+    state_registry: SyncStateRegistry | None = None,
+) -> tuple[str, str | None, str, SyncState]:
+    """Resolve cluster, tenant, LangGraph thread, and partitioned ``SyncState``."""
+    cid = resolve_cluster_id(*mcps, cluster_id=cluster_id)
+    tid = tenant_id.strip() if tenant_id and str(tenant_id).strip() else None
+    thread = thread_id if thread_id else sync_thread_id(cid, tid)
+    if state is not None:
+        sync_state = state
+    else:
+        registry = state_registry or SyncStateRegistry.from_env()
+        sync_state = registry.get(cid, tid)
+    return cid, tid, thread, sync_state
 
 
 def push_graph_batch(
@@ -154,15 +175,25 @@ def sync_pods_and_events(
     client: SyncLangGraphClient | None = None,
     link_pod_events: bool = True,
     wire_only: bool = True,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> Iterator[Any]:
     """Build batch from MCP JSON and push to LangGraph (single shot, no retry)."""
+    cid, tid, thread, _state = _resolve_sync_scope(
+        pods_mcp,
+        events_mcp,
+        cluster_id=cluster_id,
+        tenant_id=tenant_id,
+    )
     batch = pods_events_to_batch(
         pods_mcp,
         events_mcp,
         namespace,
+        cluster_id=cid,
+        tenant_id=tid,
         link_pod_events=link_pod_events,
     )
-    return push_graph_batch(batch, client=client, wire_only=wire_only)
+    return push_graph_batch(batch, client=client, wire_only=wire_only, thread_id=thread)
 
 
 def sync_pods_and_events_resilient(
@@ -170,24 +201,40 @@ def sync_pods_and_events_resilient(
     events_mcp: McpListResponse,
     namespace: str,
     *,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
     client: SyncLangGraphClient | None = None,
     state: SyncState | None = None,
+    state_registry: SyncStateRegistry | None = None,
     link_pod_events: bool = True,
     wire_only: bool = True,
+    thread_id: str | None = None,
     **push_kwargs: Any,
 ) -> SyncPushResult:
     """Event-triggered sync: MCP JSON → adapter → resilient push."""
+    cid, tid, thread, sync_state = _resolve_sync_scope(
+        pods_mcp,
+        events_mcp,
+        cluster_id=cluster_id,
+        tenant_id=tenant_id,
+        thread_id=thread_id,
+        state=state,
+        state_registry=state_registry,
+    )
     batch = pods_events_to_batch(
         pods_mcp,
         events_mcp,
         namespace,
+        cluster_id=cid,
+        tenant_id=tid,
         link_pod_events=link_pod_events,
     )
     return push_graph_batch_resilient(
         batch,
         client=client,
-        state=state,
+        state=sync_state,
         wire_only=wire_only,
+        thread_id=thread,
         **push_kwargs,
     )
 
@@ -195,8 +242,11 @@ def sync_pods_and_events_resilient(
 def sync_inspections_resilient(
     inspection_mcp: McpListResponse,
     *,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
     client: SyncLangGraphClient | None = None,
     state: SyncState | None = None,
+    state_registry: SyncStateRegistry | None = None,
     link_pods: list[str] | None = None,
     link_nodes: list[str] | None = None,
     wire_only: bool = True,
@@ -204,17 +254,27 @@ def sync_inspections_resilient(
     **push_kwargs: Any,
 ) -> SyncPushResult:
     """Sync inspection MCP JSON → graph entities and ``inspects_*`` edges."""
+    cid, tid, thread, sync_state = _resolve_sync_scope(
+        inspection_mcp,
+        cluster_id=cluster_id,
+        tenant_id=tenant_id,
+        thread_id=thread_id,
+        state=state,
+        state_registry=state_registry,
+    )
     batch = inspection_mcp_to_batch(
         inspection_mcp,
+        cluster_id=cid,
+        tenant_id=tid,
         link_pods=link_pods,
         link_nodes=link_nodes,
     )
     return push_graph_batch_resilient(
         batch,
         client=client,
-        state=state,
+        state=sync_state,
         wire_only=wire_only,
-        thread_id=thread_id,
+        thread_id=thread,
         **push_kwargs,
     )
 
@@ -225,8 +285,11 @@ def sync_pods_events_inspections_resilient(
     namespace: str,
     inspection_mcp: McpListResponse,
     *,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
     client: SyncLangGraphClient | None = None,
     state: SyncState | None = None,
+    state_registry: SyncStateRegistry | None = None,
     link_pod_events: bool = True,
     link_pods: list[str] | None = None,
     link_nodes: list[str] | None = None,
@@ -235,14 +298,28 @@ def sync_pods_events_inspections_resilient(
     **push_kwargs: Any,
 ) -> SyncPushResult:
     """Sync Pod + Event + Inspection MCP payloads in one merged resilient push."""
+    cid, tid, thread, sync_state = _resolve_sync_scope(
+        pods_mcp,
+        events_mcp,
+        inspection_mcp,
+        cluster_id=cluster_id,
+        tenant_id=tenant_id,
+        thread_id=thread_id,
+        state=state,
+        state_registry=state_registry,
+    )
     pe_batch = pods_events_to_batch(
         pods_mcp,
         events_mcp,
         namespace,
+        cluster_id=cid,
+        tenant_id=tid,
         link_pod_events=link_pod_events,
     )
     insp_batch = inspection_mcp_to_batch(
         inspection_mcp,
+        cluster_id=cid,
+        tenant_id=tid,
         link_pods=link_pods,
         link_nodes=link_nodes,
     )
@@ -250,8 +327,8 @@ def sync_pods_events_inspections_resilient(
     return push_graph_batch_resilient(
         batch,
         client=client,
-        state=state,
+        state=sync_state,
         wire_only=wire_only,
-        thread_id=thread_id,
+        thread_id=thread,
         **push_kwargs,
     )

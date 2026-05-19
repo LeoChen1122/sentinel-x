@@ -66,8 +66,8 @@ class GraphView:
             if str(e.get("type", "")).lower() == entity_type.lower()
         ]
 
-    def pod_entity_id(self, namespace: str, name: str) -> str:
-        return pod_id(namespace, name)
+    def pod_entity_id(self, cluster_id: str, namespace: str, name: str) -> str:
+        return pod_id(cluster_id, namespace, name)
 
     def events_for_pod_id(self, pod_entity_id: str) -> list[dict[str, Any]]:
         event_ids = {

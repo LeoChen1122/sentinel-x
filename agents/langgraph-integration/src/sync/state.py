@@ -40,6 +40,31 @@ def clear_entity_fingerprint_cache() -> None:
     _fingerprint_from_parts.cache_clear()
 
 
+def sync_state_partition_key(cluster_id: str, tenant_id: str | None = None) -> str:
+    """Filesystem-safe key for ``SyncState`` partition (tenant/cluster)."""
+    tenant = (tenant_id or "default").strip() or "default"
+    cid = cluster_id.strip()
+    if not cid:
+        raise ValueError("cluster_id required for sync state partition")
+    safe_tenant = tenant.replace("/", "_").replace("\\", "_")
+    safe_cluster = cid.replace("/", "_").replace("\\", "_")
+    return f"{safe_tenant}/{safe_cluster}"
+
+
+def partition_state_path(
+    base: Path | None,
+    cluster_id: str,
+    tenant_id: str | None = None,
+) -> Path | None:
+    """Resolve per-partition JSON path under ``LANGGRAPH_SYNC_STATE_PATH``."""
+    if base is None:
+        return None
+    key = sync_state_partition_key(cluster_id, tenant_id)
+    if base.suffix.lower() == ".json":
+        return base.parent / "partitions" / f"{key}.json"
+    return base / "partitions" / f"{key}.json"
+
+
 class SyncState:
     """Tracks last-pushed entity fingerprints for incremental sync."""
 
@@ -83,6 +108,24 @@ class SyncState:
         path = os.getenv("LANGGRAPH_SYNC_STATE_PATH", "").strip()
         return cls(path=path or None)
 
+    @classmethod
+    def for_scope(
+        cls,
+        cluster_id: str,
+        tenant_id: str | None = None,
+        *,
+        base_path: str | Path | None = None,
+    ) -> SyncState:
+        """Partitioned incremental state for one cluster (and optional tenant)."""
+        base: Path | None
+        if base_path is not None:
+            base = Path(base_path) if str(base_path).strip() else None
+        else:
+            env = os.getenv("LANGGRAPH_SYNC_STATE_PATH", "").strip()
+            base = Path(env) if env else None
+        path = partition_state_path(base, cluster_id, tenant_id)
+        return cls(path=path)
+
     def filter_batch(self, batch: GraphBatch) -> tuple[GraphBatch, int]:
         """Return only new or changed entities; drop edges whose endpoints were removed.
 
@@ -125,3 +168,30 @@ class SyncState:
 
     def fingerprint_for(self, entity_id: str) -> str | None:
         return self._fingerprints.get(entity_id)
+
+
+class SyncStateRegistry:
+    """In-process cache of :class:`SyncState` per tenant+cluster partition."""
+
+    def __init__(self, *, base_path: str | Path | None = None) -> None:
+        if base_path is not None and str(base_path).strip():
+            self._base_path: Path | None = Path(base_path)
+        else:
+            env = os.getenv("LANGGRAPH_SYNC_STATE_PATH", "").strip()
+            self._base_path = Path(env) if env else None
+        self._states: dict[str, SyncState] = {}
+
+    @classmethod
+    def from_env(cls) -> SyncStateRegistry:
+        return cls()
+
+    def get(self, cluster_id: str, tenant_id: str | None = None) -> SyncState:
+        key = sync_state_partition_key(cluster_id, tenant_id)
+        if key not in self._states:
+            path = partition_state_path(self._base_path, cluster_id, tenant_id)
+            self._states[key] = SyncState(path=path)
+        return self._states[key]
+
+    def clear_cache(self) -> None:
+        """Drop in-memory instances (tests)."""
+        self._states.clear()

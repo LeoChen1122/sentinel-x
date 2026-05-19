@@ -25,6 +25,7 @@ Related package: [`../langgraph-server`](../langgraph-server) — run with `lang
 | `src/clients/` | `langgraph_client.py` — SDK factory, sync stream, query API |
 | `src/query/` | `GraphView`, `run_query`, CLI `format_query_result` (step 6) |
 | `src/utils/` | `chunk_graph_batch`, `merge_graph_batches` (step 8) |
+| `src/testing/` | Multicluster MCP mocks (`multicluster_fixtures.py`, phase 4-0) |
 | `tests/` | Unit tests (no live LangGraph required for most cases) |
 | `scripts/` | `full_pipeline_demo.py`, `query_demo.py`, `sync_once_demo.py`, `smoke_local_langgraph.py` |
 
@@ -68,9 +69,30 @@ Copy `.env.example` and set:
 **Event-triggered** (after MCP returns):
 
 ```python
-from sync import sync_pods_and_events_resilient
+from sync import sync_pods_and_events_resilient, sync_thread_id
 
-result = sync_pods_and_events_resilient(pods_mcp, events_mcp, namespace)
+result = sync_pods_and_events_resilient(
+    pods_mcp, events_mcp, namespace, cluster_id="dev-cluster"
+)
+# Default LangGraph thread_id: "default:dev-cluster" (tenant:cluster)
+sync_thread_id("dev-cluster", tenant_id="team-alpha")  # -> "team-alpha:dev-cluster"
+```
+
+### Phase 4-2: multicluster sync partition
+
+| Concept | Behavior |
+|---------|----------|
+| `thread_id` | Default `{tenant_id or 'default'}:{cluster_id}` via `sync_thread_id()` |
+| `SyncState` | Partitioned under `LANGGRAPH_SYNC_STATE_PATH/partitions/{tenant}/{cluster}.json` |
+| `SyncStateRegistry` | One in-memory/disk state per tenant+cluster |
+| `sync_clusters_resilient` | Tick multiple clusters with isolated state/thread |
+
+```python
+from sync import make_mock_cluster_sync, sync_clusters_resilient
+from testing.multicluster_fixtures import CLUSTER_DEV, CLUSTER_PROD
+
+sync_one = make_mock_cluster_sync()
+sync_clusters_resilient([CLUSTER_DEV, CLUSTER_PROD], sync_one)
 ```
 
 **Periodic** (caller fetches MCP, then sync):
@@ -94,12 +116,12 @@ In-memory queries over a sync `payload` (`entities` + `edges`). The LangGraph `s
 
 | `op` | Parameters | Returns |
 |------|------------|---------|
-| `list_pods` | `namespace?` | Pod rows (name, namespace, status) |
-| `pod_status` | `namespace`, `name` | Single pod properties or `found: false` |
-| `events_for_pod` | `namespace`, `name` | Events linked via `has_event` |
-| `inspections_summary` | — | Inspection entities + `inspects_pod` / `inspects_node` links |
-| `list_events` | `namespace?` | All Event entities (step 8) |
-| `inspections_for_pod` | `namespace`, `name` | Inspections linked via `inspects_pod` (step 8) |
+| `list_pods` | `cluster_id?`, `namespace?` | Pod rows (name, namespace, status) |
+| `pod_status` | `cluster_id`, `namespace`, `name` | Single pod properties or `found: false` |
+| `events_for_pod` | `cluster_id`, `namespace`, `name` | Events linked via `has_event` |
+| `inspections_summary` | `cluster_id?` | Inspection entities + `inspects_pod` / `inspects_node` links |
+| `list_events` | `cluster_id?`, `namespace?` | All Event entities (step 8) |
+| `inspections_for_pod` | `cluster_id`, `namespace`, `name` | Inspections linked via `inspects_pod` (step 8) |
 
 **Local (no LangGraph):**
 
@@ -122,29 +144,80 @@ from clients.langgraph_client import stream_sentinel_run, query_sentinel
 
 thread_id = "my-thread-1"
 stream_sentinel_run(batch.to_dict(wire_only=True), thread_id=thread_id)
-result = query_sentinel("events_for_pod", thread_id=thread_id, namespace="default", name="demo-pod")
+result = query_sentinel(
+    "events_for_pod",
+    thread_id=thread_id,
+    cluster_id="local",
+    namespace="default",
+    name="shared-pod",
+)
 ```
 
-Use the same `thread_id` for sync and query so checkpointed graph state accumulates. Pass `thread_id` into `push_graph_batch` / `sync_*_resilient` for production sync.
+Use the same `thread_id` for sync and query so checkpointed graph state accumulates. `sync_*_resilient` derives it from `cluster_id` / `tenant_id` when omitted; override with explicit `thread_id` if needed.
 
 ## Step 8: Events + Inspections
 
 Expand in order: **Pod → Event → Inspection** (model → adapter → sync → query).
 
-### ID conventions
+### ID conventions (phase 4-0, scheme A)
 
-- Inspection row `linked_pods` / `link_pods` args must be **entity ids** (`pod:default/demo-pod`), not bare pod names.
-- `linked_nodes` / `link_nodes` use `node:worker-01` form.
+All stable IDs include **`cluster_id`** as the first segment:
+
+| Entity | ID pattern |
+|--------|------------|
+| Pod | `pod:{cluster_id}/{namespace}/{name}` |
+| Event | `event:{cluster_id}:{namespace}:...` (structured or hash suffix) |
+| Node | `node:{cluster_id}/{name}` |
+| Inspection | `inspection:{cluster_id}:{timestamp}:{node}` |
+
+- `tenant_id` is stored in `properties` only (not in ID strings).
+- Inspection row `linked_pods` / `link_pods` must be **entity ids** (e.g. `pod:local/default/shared-pod`), not bare pod names.
+- `linked_nodes` / `link_nodes` use `node:{cluster_id}/worker-01` form.
 - Pod→Node edges remain optional (`pod_node_map` in `pods_events_to_batch`); Node entities are defined for future use.
+
+### MCP contract (phase 4-0)
+
+MCP list responses extend the step 3 shape with **`cluster_id`**:
+
+```json
+{ "query": "get_pods", "cluster_id": "dev-cluster", "results": [ ... ] }
+```
+
+Adapter resolves `cluster_id` from the payload or from an explicit argument. Without either, conversion raises.
+
+### Multicluster mocks (no live K8s)
+
+```python
+from testing.multicluster_fixtures import (
+    CLUSTER_DEV,
+    CLUSTER_PROD,
+    dual_cluster_merged_batch,
+    pods_mcp,
+)
+
+batch = dual_cluster_merged_batch()  # dev + prod, same pod name, distinct IDs
+```
+
+```powershell
+python scripts\full_pipeline_demo.py   # prints per-cluster list_pods / events_for_pod
+python scripts\query_demo.py --cluster-id local
+```
+
+Tests: `tests/test_multicluster.py`.
 
 ### Sync APIs
 
 ```python
 from sync import sync_inspections_resilient, sync_pods_events_inspections_resilient
 
-thread_id = "cluster-default"
-sync_inspections_resilient(inspection_mcp, thread_id=thread_id, link_pods=["pod:default/demo-pod"])
-sync_pods_events_inspections_resilient(pods_mcp, events_mcp, "default", inspection_mcp, thread_id=thread_id)
+sync_inspections_resilient(
+    inspection_mcp,
+    cluster_id="local",
+    link_pods=["pod:local/default/shared-pod"],
+)
+sync_pods_events_inspections_resilient(
+    pods_mcp, events_mcp, "default", inspection_mcp, cluster_id="local"
+)
 ```
 
 `sync_pods_events_inspections_resilient` merges Pod/Event and Inspection batches via `merge_graph_batches` (orphan edges dropped).
@@ -153,8 +226,8 @@ sync_pods_events_inspections_resilient(pods_mcp, events_mcp, "default", inspecti
 
 | `op` | Parameters |
 |------|------------|
-| `list_events` | `namespace?` |
-| `inspections_for_pod` | `namespace`, `name` |
+| `list_events` | `cluster_id?`, `namespace?` |
+| `inspections_for_pod` | `cluster_id`, `namespace`, `name` |
 
 ### Phase 1–3 acceptance
 
@@ -168,6 +241,30 @@ $env:LANGGRAPH_API_URL = "http://127.0.0.1:2024"
 $env:LANGGRAPH_RUN_LIVE = "1"
 python scripts\full_pipeline_demo.py --live --thread-id step8-demo
 ```
+
+## Multicluster acceptance (mock)
+
+Validates Node / Inspection IDs and edges, Adapter stability, Query with `cluster_id`, and per-cluster LangGraph `thread_id` (no live K8s required).
+
+| Term | Meaning |
+|------|---------|
+| linked_events | Query op `events_for_pod` (via `has_event` edges) |
+| linked_pods | Adapter row field; Query op `inspections_for_pod` / `inspections_summary` |
+
+```powershell
+python -m unittest tests.test_multicluster tests.test_multicluster_graph tests.test_multicluster_sync -v
+python scripts\multicluster_validate_demo.py
+```
+
+Fixture: `dual_cluster_full_batch()` — dev + prod each with Pod, Event, Node, Inspection.
+
+## Phase 4-0b (deferred)
+
+Live multi-cluster wiring (not required for model validation):
+
+- `configs/clusters.yaml` + per-cluster `CLUSTER_ID` env on MCP containers
+- One MCP service per cluster in docker-compose
+- `ClusterDataSource` abstraction for fetch + sync loops
 
 ## Boundaries
 

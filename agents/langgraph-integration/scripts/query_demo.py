@@ -13,105 +13,59 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from models.entities import EntityType, RelationType  # noqa: E402
-from models.ids import event_id, inspection_id, pod_id  # noqa: E402
+from adapter.inspections import inspection_mcp_to_batch  # noqa: E402
+from adapter.k8s import pods_events_to_batch  # noqa: E402
 from query import format_query_result, run_query  # noqa: E402
+from testing.multicluster_fixtures import (  # noqa: E402
+    CLUSTER_LOCAL,
+    inspection_mcp,
+    pods_mcp,
+    events_mcp,
+)
+from utils.graph_merge import merge_graph_batches  # noqa: E402
 
 
-def _mock_payload() -> dict:
+def _mock_payload(cluster_id: str = CLUSTER_LOCAL) -> dict:
     ns = "default"
-    pname = "demo-pod"
-    pid = pod_id(ns, pname)
-    eid = event_id(
-        namespace=ns,
-        object_kind="Pod",
-        object_name=pname,
-        reason="FailedScheduling",
-        last_timestamp="2024-06-01T12:00:00Z",
+    pe = pods_events_to_batch(
+        pods_mcp(cluster_id, namespace=ns),
+        events_mcp(cluster_id, namespace=ns),
+        ns,
     )
-    iid = inspection_id("2024-06-01T12:00:00Z", "worker-01")
-    return {
-        "entities": [
-            {
-                "id": pid,
-                "type": EntityType.POD.value,
-                "properties": {"namespace": ns, "name": pname, "status": "Running"},
-            },
-            {
-                "id": eid,
-                "type": EntityType.EVENT.value,
-                "properties": {
-                    "type": "Warning",
-                    "reason": "FailedScheduling",
-                    "message": "0/3 nodes available",
-                    "last_timestamp": "2024-06-01T12:00:00Z",
-                },
-            },
-            {
-                "id": iid,
-                "type": EntityType.INSPECTION.value,
-                "properties": {
-                    "timestamp": "2024-06-01T12:00:00Z",
-                    "node": "worker-01",
-                    "status": "ok",
-                    "summary": "routine check",
-                },
-            },
-        ],
-        "edges": [
-            {
-                "source_id": pid,
-                "target_id": eid,
-                "relation": RelationType.HAS_EVENT.value,
-            },
-            {
-                "source_id": iid,
-                "target_id": pid,
-                "relation": RelationType.INSPECTS_POD.value,
-            },
-        ],
-    }
+    insp = inspection_mcp_to_batch(inspection_mcp(cluster_id, namespace=ns))
+    return merge_graph_batches(pe, insp).to_dict(wire_only=True)
 
 
-def _print_ops(payload: dict) -> None:
+def _print_ops(payload: dict, cluster_id: str) -> None:
+    ns = "default"
     for op, params in (
-        ("list_pods", {}),
-        ("pod_status", {"namespace": "default", "name": "demo-pod"}),
-        ("events_for_pod", {"namespace": "default", "name": "demo-pod"}),
-        ("inspections_summary", {}),
+        ("list_pods", {"cluster_id": cluster_id}),
+        ("pod_status", {"cluster_id": cluster_id, "namespace": ns, "name": "shared-pod"}),
+        (
+            "events_for_pod",
+            {"cluster_id": cluster_id, "namespace": ns, "name": "shared-pod"},
+        ),
+        ("inspections_summary", {"cluster_id": cluster_id}),
     ):
         result = run_query(payload, op, **params)
         print(f"=== {op} ===")
         print(format_query_result(result), end="")
 
 
-def _live_demo(thread_id: str) -> None:
-    from adapter import pods_events_to_batch
+def _live_demo(thread_id: str, cluster_id: str) -> None:
     from clients.langgraph_client import (
         get_langgraph_client,
         query_sentinel,
         stream_sentinel_run,
     )
 
-    pods_mcp = {
-        "query": "get_pods",
-        "results": [{"name": "demo-pod", "status": "Running"}],
-    }
-    events_mcp = {
-        "query": "get_events",
-        "results": [
-            {
-                "type": "Warning",
-                "reason": "FailedScheduling",
-                "message": "0/3 nodes",
-                "object_kind": "Pod",
-                "object_name": "demo-pod",
-                "last_timestamp": "2024-06-01T12:00:00Z",
-            }
-        ],
-    }
-    batch = pods_events_to_batch(pods_mcp, events_mcp, "default")
+    ns = "default"
     client = get_langgraph_client()
+    batch = pods_events_to_batch(
+        pods_mcp(cluster_id, namespace=ns),
+        events_mcp(cluster_id, namespace=ns),
+        ns,
+    )
     list(
         stream_sentinel_run(
             batch.to_dict(wire_only=True),
@@ -119,13 +73,13 @@ def _live_demo(thread_id: str) -> None:
             client=client,
         )
     )
-
     result = query_sentinel(
         "events_for_pod",
         thread_id=thread_id,
         client=client,
-        namespace="default",
-        name="demo-pod",
+        cluster_id=cluster_id,
+        namespace=ns,
+        name="shared-pod",
     )
     print("=== events_for_pod (live) ===")
     print(format_query_result(result), end="")
@@ -133,15 +87,14 @@ def _live_demo(thread_id: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sentinel-X query demo (step 6)")
+    parser.add_argument("--live", action="store_true")
     parser.add_argument(
-        "--live",
-        action="store_true",
-        help="Sync + query via LangGraph (requires LANGGRAPH_API_URL, langgraph dev)",
+        "--cluster-id",
+        default=os.environ.get("CLUSTER_ID", CLUSTER_LOCAL),
     )
     parser.add_argument(
         "--thread-id",
         default=os.environ.get("LANGGRAPH_THREAD_ID") or str(uuid.uuid4()),
-        help="Thread id for --live (default: new UUID)",
     )
     args = parser.parse_args()
 
@@ -153,10 +106,10 @@ def main() -> int:
         ):
             print("Set LANGGRAPH_RUN_LIVE=1 for --live", file=sys.stderr)
             return 1
-        _live_demo(args.thread_id)
+        _live_demo(args.thread_id, args.cluster_id)
         return 0
 
-    _print_ops(_mock_payload())
+    _print_ops(_mock_payload(args.cluster_id), args.cluster_id)
     return 0
 
 

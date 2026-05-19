@@ -11,7 +11,8 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from models.entities import GraphBatch, GraphEntity, entity_from_pod_row
+from models.entities import GraphBatch, entity_from_pod_row
+from testing.multicluster_fixtures import CLUSTER_LOCAL
 from sync.pipeline import push_graph_batch_resilient
 from sync.state import (
     SyncState,
@@ -22,7 +23,11 @@ from sync.state import (
 
 
 def _pod_batch(name: str = "p1", status: str = "Running") -> GraphBatch:
-    ent = entity_from_pod_row({"name": name, "status": status}, "default")
+    ent = entity_from_pod_row(
+        {"name": name, "status": status},
+        "default",
+        cluster_id=CLUSTER_LOCAL,
+    )
     return GraphBatch(entities=[ent])
 
 
@@ -57,7 +62,9 @@ class TestIncrementalSync(unittest.TestCase):
         self.assertGreaterEqual(r.chunks_sent, 1)
 
     def test_fingerprint_stable(self) -> None:
-        ent = entity_from_pod_row({"name": "a", "status": "Running"}, "ns")
+        ent = entity_from_pod_row(
+            {"name": "a", "status": "Running"}, "ns", cluster_id=CLUSTER_LOCAL
+        )
         self.assertEqual(
             entity_fingerprint(ent),
             entity_fingerprint(ent),
@@ -65,8 +72,12 @@ class TestIncrementalSync(unittest.TestCase):
 
     def test_fingerprint_lru_cache(self) -> None:
         clear_entity_fingerprint_cache()
-        e1 = entity_from_pod_row({"name": "a", "status": "Running"}, "ns")
-        e2 = entity_from_pod_row({"name": "a", "status": "Running"}, "ns")
+        e1 = entity_from_pod_row(
+            {"name": "a", "status": "Running"}, "ns", cluster_id=CLUSTER_LOCAL
+        )
+        e2 = entity_from_pod_row(
+            {"name": "a", "status": "Running"}, "ns", cluster_id=CLUSTER_LOCAL
+        )
         self.assertEqual(entity_fingerprint(e1), entity_fingerprint(e2))
         info = _fingerprint_from_parts.cache_info()
         self.assertGreater(info.hits, 0)
@@ -89,7 +100,11 @@ class TestIncrementalSync(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
             state = SyncState(path=path)
-            ent = entity_from_pod_row({"name": "x", "status": "Running"}, "default")
+            ent = entity_from_pod_row(
+                {"name": "x", "status": "Running"},
+                "default",
+                cluster_id=CLUSTER_LOCAL,
+            )
             state.update_from_batch(GraphBatch(entities=[ent]))
             self.assertTrue(path.is_file())
             self.assertFalse(path.with_name(path.name + ".tmp").exists())
@@ -126,7 +141,11 @@ class TestRetry(unittest.TestCase):
 class TestChunkingAndRateLimit(unittest.TestCase):
     def test_multiple_chunks(self) -> None:
         ents = [
-            entity_from_pod_row({"name": f"p{i}", "status": "Running"}, "default")
+            entity_from_pod_row(
+                {"name": f"p{i}", "status": "Running"},
+                "default",
+                cluster_id=CLUSTER_LOCAL,
+            )
             for i in range(5)
         ]
         batch = GraphBatch(entities=ents)
@@ -159,8 +178,12 @@ class TestSyncPodsAndEventsResilient(unittest.TestCase):
     def test_event_trigger_path(self) -> None:
         from sync.pipeline import sync_pods_and_events_resilient
 
-        pods = {"results": [{"name": "x", "status": "Running"}]}
-        events = {"results": []}
+        pods = {
+            "query": "get_pods",
+            "cluster_id": CLUSTER_LOCAL,
+            "results": [{"name": "x", "status": "Running"}],
+        }
+        events = {"query": "get_events", "cluster_id": CLUSTER_LOCAL, "results": []}
         with mock.patch("sync.pipeline.stream_sentinel_run", return_value=iter([])):
             r = sync_pods_and_events_resilient(
                 pods,

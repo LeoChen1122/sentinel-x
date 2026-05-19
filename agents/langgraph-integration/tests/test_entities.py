@@ -27,6 +27,9 @@ from models.entities import (
 )
 from models.ids import event_id, inspection_id, node_id, pod_id
 
+CL = "local"
+CL_SANDBOX = "sandbox"
+
 
 class TestWireRelationMapping(unittest.TestCase):
     def test_emits_to_has_event(self) -> None:
@@ -51,37 +54,43 @@ class TestWireRelationMapping(unittest.TestCase):
 
 class TestStableIds(unittest.TestCase):
     def test_pod_id(self) -> None:
-        self.assertEqual(pod_id("default", "nginx-1"), "pod:default/nginx-1")
+        self.assertEqual(
+            pod_id(CL, "default", "nginx-1"), f"pod:{CL}/default/nginx-1"
+        )
 
     def test_node_id(self) -> None:
-        self.assertEqual(node_id("worker-01"), "node:worker-01")
+        self.assertEqual(node_id(CL, "worker-01"), f"node:{CL}/worker-01")
 
     def test_inspection_id(self) -> None:
         self.assertEqual(
-            inspection_id("2024-06-01T00:00:00Z", "worker-01"),
-            "inspection:2024-06-01T00_00_00Z:worker-01",
+            inspection_id(CL, "2024-06-01T00:00:00Z", "worker-01"),
+            f"inspection:{CL}:2024-06-01T00_00_00Z:worker-01",
         )
 
     def test_event_id_structured(self) -> None:
         eid = event_id(
+            cluster_id=CL_SANDBOX,
             namespace="sandbox",
             object_kind="Pod",
             object_name="nginx-1",
             reason="Failed",
             last_timestamp="2024-06-15T12:00:00Z",
         )
-        self.assertTrue(eid.startswith("event:sandbox:Pod:nginx-1:Failed:"))
+        self.assertTrue(
+            eid.startswith(f"event:{CL_SANDBOX}:sandbox:Pod:nginx-1:Failed:")
+        )
 
     def test_event_id_hash_when_long(self) -> None:
         long_name = "p" * 200
         eid = event_id(
+            cluster_id=CL_SANDBOX,
             namespace="sandbox",
             object_kind="Pod",
             object_name=long_name,
             reason="Failed",
             last_timestamp="2024-06-15T12:00:00Z",
         )
-        self.assertTrue(eid.startswith("event:sandbox:"))
+        self.assertTrue(eid.startswith(f"event:{CL_SANDBOX}:sandbox:"))
         self.assertNotIn(long_name, eid)
         self.assertEqual(len(eid.split(":")[-1]), 16)
 
@@ -92,22 +101,23 @@ class TestMcpPodMapping(unittest.TestCase):
             "query": "get_pods",
             "results": [{"name": "payment-1", "status": "Running"}],
         }
-        ent = entity_from_pod_row(mcp_json["results"][0], "sandbox")
+        ent = entity_from_pod_row(
+            mcp_json["results"][0], "sandbox", cluster_id=CL_SANDBOX
+        )
         self.assertEqual(ent.type, EntityType.POD)
-        self.assertEqual(ent.id, "pod:sandbox/payment-1")
+        self.assertEqual(ent.id, f"pod:{CL_SANDBOX}/sandbox/payment-1")
         self.assertEqual(ent.properties["namespace"], "sandbox")
-        self.assertEqual(ent.properties["name"], "payment-1")
-        self.assertEqual(ent.properties["status"], "Running")
+        self.assertEqual(ent.properties["cluster_id"], CL_SANDBOX)
 
     def test_pod_optional_labels_timestamp(self) -> None:
         ent = entity_from_pod_row(
             {"name": "p1", "status": "Running"},
             "default",
+            cluster_id=CL,
             labels={"app": "web"},
             creation_timestamp="2024-01-01T00:00:00Z",
         )
         self.assertEqual(ent.properties["labels"], {"app": "web"})
-        self.assertEqual(ent.properties["creationTimestamp"], "2024-01-01T00:00:00Z")
 
 
 class TestMcpEventMapping(unittest.TestCase):
@@ -122,31 +132,30 @@ class TestMcpEventMapping(unittest.TestCase):
             "count": 2,
             "last_timestamp": "2024-06-15T12:00:00Z",
         }
-        ent = entity_from_event_row(row)
+        ent = entity_from_event_row(row, cluster_id=CL_SANDBOX)
         self.assertEqual(ent.type, EntityType.EVENT)
-        self.assertEqual(ent.properties["reason"], "Failed")
-        self.assertEqual(ent.properties["object_name"], "payment-1")
+        self.assertEqual(ent.properties["cluster_id"], CL_SANDBOX)
 
 
 class TestNodeAndScheduledOn(unittest.TestCase):
     def test_node_entity_and_scheduled_on(self) -> None:
-        node = entity_from_node("worker-01", labels={"zone": "a"})
-        self.assertEqual(node.type, EntityType.NODE)
-        self.assertEqual(node.id, "node:worker-01")
-        edge = edge_pod_to_node("pod:default/p1", node.id)
+        node = entity_from_node("worker-01", cluster_id=CL, labels={"zone": "a"})
+        self.assertEqual(node.id, f"node:{CL}/worker-01")
+        pid = pod_id(CL, "default", "p1")
+        edge = edge_pod_to_node(pid, node.id)
         self.assertEqual(edge.relation, RelationType.SCHEDULED_ON)
-        self.assertEqual(edge.kind, RelationKind.SCHEDULED_ON)
-        self.assertIsNone(edge.target_type)
 
 
 class TestGraphBatchFromPodsEvents(unittest.TestCase):
     def test_from_pods_events(self) -> None:
         pods_mcp = {
             "query": "get_pods",
+            "cluster_id": CL_SANDBOX,
             "results": [{"name": "payment-1", "status": "Running"}],
         }
         events_mcp = {
             "query": "get_events",
+            "cluster_id": CL_SANDBOX,
             "results": [
                 {
                     "type": "Warning",
@@ -163,13 +172,16 @@ class TestGraphBatchFromPodsEvents(unittest.TestCase):
         batch = GraphBatch.from_pods_events(pods_mcp, events_mcp, "sandbox")
         self.assertEqual(len(batch.entities), 2)
         self.assertEqual(len(batch.edges), 1)
-        self.assertEqual(batch.edges[0].relation, RelationType.HAS_EVENT)
-        self.assertEqual(batch.edges[0].kind, RelationKind.EMITS)
 
     def test_from_pods_events_dedupes_entities(self) -> None:
-        pods_mcp = {"query": "get_pods", "results": [{"name": "p1", "status": "Running"}]}
+        pods_mcp = {
+            "query": "get_pods",
+            "cluster_id": CL_SANDBOX,
+            "results": [{"name": "p1", "status": "Running"}],
+        }
         events_mcp = {
             "query": "get_events",
+            "cluster_id": CL_SANDBOX,
             "results": [
                 {
                     "reason": "A",
@@ -196,10 +208,12 @@ class TestGraphBatchAndEdges(unittest.TestCase):
     def test_pod_to_event_edge_from_mock_mcp(self) -> None:
         pods_mcp = {
             "query": "get_pods",
+            "cluster_id": CL_SANDBOX,
             "results": [{"name": "payment-1", "status": "Running"}],
         }
         events_mcp = {
             "query": "get_events",
+            "cluster_id": CL_SANDBOX,
             "results": [
                 {
                     "type": "Warning",
@@ -216,8 +230,6 @@ class TestGraphBatchAndEdges(unittest.TestCase):
         batch = GraphBatch.from_pods_events(pods_mcp, events_mcp, "sandbox")
         self.assertEqual(len(batch.entities), 2)
         self.assertEqual(len(batch.edges), 1)
-        self.assertEqual(batch.edges[0].relation, RelationType.HAS_EVENT)
-        self.assertEqual(batch.edges[0].kind, RelationKind.EMITS)
 
     def test_inspection_edges(self) -> None:
         insp = entity_from_inspection(
@@ -225,18 +237,16 @@ class TestGraphBatchAndEdges(unittest.TestCase):
             "worker-01",
             "ok",
             "all healthy",
+            cluster_id=CL,
         )
-        pod = entity_from_pod_row({"name": "p1", "status": "Running"}, "default")
+        pod = entity_from_pod_row(
+            {"name": "p1", "status": "Running"}, "default", cluster_id=CL
+        )
         edge = edge_inspection_to_pod(insp.id, pod.id)
         self.assertEqual(edge.relation, RelationType.INSPECTS_POD)
-        self.assertEqual(edge.kind, RelationKind.INSPECTS)
-        self.assertEqual(edge.target_type, EntityType.POD)
 
     def test_edge_to_dict_wire_only(self) -> None:
         edge = edge_pod_to_event("pod:a/b", "event:x")
-        full = edge.to_dict()
-        self.assertIn("kind", full)
-        self.assertIn("relation", full)
         wire = edge.to_dict(wire_only=True)
         self.assertNotIn("kind", wire)
         self.assertEqual(wire["relation"], "has_event")

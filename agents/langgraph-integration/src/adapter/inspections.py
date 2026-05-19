@@ -1,7 +1,8 @@
 """Adapter: inspection records → graph entities (future inspection MCP).
 
 Wire IDs for ``linked_pods`` / ``linked_nodes`` (row fields or ``link_*`` args)
-must be **entity ids** only, e.g. ``pod:default/demo-pod``, ``node:worker-01``.
+must be **entity ids** only, e.g. ``pod:dev-cluster/default/demo-pod``,
+``node:dev-cluster/worker-01``. Do not pass bare pod names.
 Do not pass bare pod names or ``namespace/name`` strings.
 """
 
@@ -64,7 +65,12 @@ def _dedupe_preserve(items: list[str]) -> list[str]:
     return out
 
 
-def inspections_to_entities(rows: list[dict[str, Any]]) -> list[GraphEntity]:
+def inspections_to_entities(
+    rows: list[dict[str, Any]],
+    *,
+    cluster_id: str,
+    tenant_id: str | None = None,
+) -> list[GraphEntity]:
     """Map inspection rows to ``GraphEntity`` list.
 
     Expected keys per row: ``timestamp``, ``node``, ``status``, ``summary``.
@@ -77,6 +83,8 @@ def inspections_to_entities(rows: list[dict[str, Any]]) -> list[GraphEntity]:
                 str(row["node"]),
                 str(row.get("status", "unknown")),
                 str(row.get("summary", "")),
+                cluster_id=cluster_id,
+                tenant_id=tenant_id,
             )
         )
     return entities
@@ -85,11 +93,17 @@ def inspections_to_entities(rows: list[dict[str, Any]]) -> list[GraphEntity]:
 def inspections_to_batch(
     rows: list[dict[str, Any]],
     *,
+    cluster_id: str,
+    tenant_id: str | None = None,
     link_pods: list[str] | None = None,
     link_nodes: list[str] | None = None,
 ) -> GraphBatch:
     """Build inspection entities and optional ``inspects_*`` edges."""
-    batch = GraphBatch(entities=inspections_to_entities(rows))
+    batch = GraphBatch(
+        entities=inspections_to_entities(
+            rows, cluster_id=cluster_id, tenant_id=tenant_id
+        )
+    )
     global_pods = _entity_ids_from_field(
         link_pods, expected_prefix=_POD_ID_PREFIX, field_name="link_pods"
     )
@@ -120,9 +134,20 @@ def inspections_to_batch(
 def inspection_mcp_to_batch(
     mcp_json: McpListResponse,
     *,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
     link_pods: list[str] | None = None,
     link_nodes: list[str] | None = None,
 ) -> GraphBatch:
     """Map ``{query, results}`` inspection MCP shape to ``GraphBatch``."""
+    from models.scope import resolve_cluster_id
+
+    cid = resolve_cluster_id(mcp_json, cluster_id=cluster_id)
     rows = mcp_json.get("results") or []
-    return inspections_to_batch(rows, link_pods=link_pods, link_nodes=link_nodes)
+    return inspections_to_batch(
+        rows,
+        cluster_id=cid,
+        tenant_id=tenant_id,
+        link_pods=link_pods,
+        link_nodes=link_nodes,
+    )

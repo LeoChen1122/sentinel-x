@@ -13,28 +13,36 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
+from models.scope import sync_thread_id  # noqa: E402
 from sync import sync_pods_and_events_resilient  # noqa: E402
 
 
 def main() -> int:
-    pods_mcp = {
-        "query": "get_pods",
-        "results": [{"name": "demo-pod", "status": "Running"}],
-    }
-    events_mcp = {
-        "query": "get_events",
+    from testing.multicluster_fixtures import CLUSTER_LOCAL, events_mcp, pods_mcp
+
+    pods_payload = pods_mcp(CLUSTER_LOCAL)
+    events_payload = events_mcp(CLUSTER_LOCAL)
+    events_payload = {
+        **events_payload,
         "results": [
             {
                 "type": "Warning",
                 "reason": "FailedScheduling",
                 "message": "0/3 nodes",
                 "object_kind": "Pod",
-                "object_name": "demo-pod",
+                "object_name": "shared-pod",
                 "last_timestamp": "2024-06-01T12:00:00Z",
             }
         ],
     }
-    result = sync_pods_and_events_resilient(pods_mcp, events_mcp, "default")
+    result = sync_pods_and_events_resilient(
+        pods_payload,
+        events_payload,
+        "default",
+        cluster_id=CLUSTER_LOCAL,
+        thread_id=sync_thread_id(CLUSTER_LOCAL),
+    )
+    print(f"thread_id={sync_thread_id(CLUSTER_LOCAL)}")
     print(
         "sync ok:",
         f"chunks={result.chunks_sent}",

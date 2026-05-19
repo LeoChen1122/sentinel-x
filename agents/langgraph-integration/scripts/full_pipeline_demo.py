@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Step 8 demo: Pod + Event + Inspection mock pipeline and optional live sync.
-
-Default (no LangGraph): build batches, merge, run local ``run_query``.
-``--live``: requires ``langgraph dev``, ``LANGGRAPH_API_URL``, ``LANGGRAPH_RUN_LIVE=1``.
-"""
+"""Step 8 / phase 4-0 demo: multicluster mock pipeline and optional live sync."""
 
 from __future__ import annotations
 
@@ -11,109 +7,100 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from unittest import mock
 
 _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from adapter.inspections import inspection_mcp_to_batch  # noqa: E402
-from adapter.k8s import pods_events_to_batch  # noqa: E402
-from models.ids import pod_id  # noqa: E402
+from models.scope import sync_thread_id  # noqa: E402
 from query import format_query_result, run_query  # noqa: E402
-from utils.graph_merge import merge_graph_batches  # noqa: E402
+from sync.multicluster import make_mock_cluster_sync, sync_clusters_resilient  # noqa: E402
+from testing.multicluster_fixtures import (  # noqa: E402
+    CLUSTER_DEV,
+    CLUSTER_LOCAL,
+    CLUSTER_PROD,
+    dual_cluster_merged_batch,
+)
 
 
-def _mock_mcp(namespace: str) -> tuple[dict, dict, dict]:
-    pods_mcp = {
-        "query": "get_pods",
-        "results": [{"name": "demo-pod", "status": "Running"}],
-    }
-    events_mcp = {
-        "query": "get_events",
-        "results": [
-            {
-                "type": "Warning",
-                "reason": "FailedScheduling",
-                "message": "0/3 nodes available",
-                "object_kind": "Pod",
-                "object_name": "demo-pod",
-                "last_timestamp": "2024-06-01T12:00:00Z",
-            }
-        ],
-    }
-    pid = pod_id(namespace, "demo-pod")
-    inspection_mcp = {
-        "query": "get_inspections",
-        "results": [
-            {
-                "timestamp": "2024-06-01T12:00:00Z",
-                "node": "worker-01",
-                "status": "ok",
-                "summary": "routine check",
-                "linked_pods": [pid],
-            }
-        ],
-    }
-    return pods_mcp, events_mcp, inspection_mcp
+def _print_multicluster_mock() -> None:
+    sync_one = make_mock_cluster_sync()
+    with mock.patch("sync.pipeline.stream_sentinel_run", return_value=iter([])):
+        mc = sync_clusters_resilient([CLUSTER_DEV, CLUSTER_PROD], sync_one)
+    print(
+        f"sync mock: dev entities={mc.by_cluster[CLUSTER_DEV].entities_pushed}, "
+        f"prod entities={mc.by_cluster[CLUSTER_PROD].entities_pushed}"
+    )
+    payload = dual_cluster_merged_batch().to_dict(wire_only=True)
+    for cid in (CLUSTER_DEV, CLUSTER_PROD):
+        print(f"=== cluster {cid} list_pods ===")
+        print(
+            format_query_result(
+                run_query(payload, "list_pods", cluster_id=cid)
+            ),
+            end="",
+        )
+        print(f"=== cluster {cid} events_for_pod ===")
+        print(
+            format_query_result(
+                run_query(
+                    payload,
+                    "events_for_pod",
+                    cluster_id=cid,
+                    namespace="default",
+                    name="shared-pod",
+                )
+            ),
+            end="",
+        )
 
 
-def _build_payload(namespace: str) -> dict:
-    pods_mcp, events_mcp, inspection_mcp = _mock_mcp(namespace)
-    pe = pods_events_to_batch(pods_mcp, events_mcp, namespace)
-    insp = inspection_mcp_to_batch(inspection_mcp)
-    return merge_graph_batches(pe, insp).to_dict(wire_only=True)
-
-
-def _print_queries(payload: dict, namespace: str) -> None:
-    for op, params in (
-        ("list_pods", {"namespace": namespace}),
-        ("list_events", {"namespace": namespace}),
-        ("events_for_pod", {"namespace": namespace, "name": "demo-pod"}),
-        ("inspections_summary", {}),
-        ("inspections_for_pod", {"namespace": namespace, "name": "demo-pod"}),
-    ):
-        result = run_query(payload, op, **params)
-        print(f"=== {op} ===")
-        print(format_query_result(result), end="")
-
-
-def _live_demo(namespace: str, thread_id: str) -> None:
+def _live_demo(cluster_id: str, thread_id: str | None, tenant_id: str | None) -> None:
     from clients.langgraph_client import get_langgraph_client, query_sentinel
     from sync import sync_pods_events_inspections_resilient
-
-    pods_mcp, events_mcp, inspection_mcp = _mock_mcp(namespace)
-    client = get_langgraph_client()
-    result = sync_pods_events_inspections_resilient(
-        pods_mcp,
+    from testing.multicluster_fixtures import (
         events_mcp,
-        namespace,
         inspection_mcp,
+        pods_mcp,
+    )
+
+    client = get_langgraph_client()
+    ns = "default"
+    tid = thread_id or sync_thread_id(cluster_id, tenant_id)
+    sync_pods_events_inspections_resilient(
+        pods_mcp(cluster_id, namespace=ns),
+        events_mcp(cluster_id, namespace=ns),
+        ns,
+        inspection_mcp(cluster_id, namespace=ns),
         client=client,
-        thread_id=thread_id,
+        cluster_id=cluster_id,
+        tenant_id=tenant_id,
+        thread_id=tid,
     )
-    print(
-        "sync:",
-        f"chunks={result.chunks_sent}",
-        f"entities={result.entities_pushed}",
-        f"edges={result.edges_pushed}",
-    )
-    for op, params in (
-        ("events_for_pod", {"namespace": namespace, "name": "demo-pod"}),
-        ("inspections_for_pod", {"namespace": namespace, "name": "demo-pod"}),
-    ):
-        out = query_sentinel(op, thread_id=thread_id, client=client, **params)
+    for op in ("events_for_pod", "inspections_for_pod"):
+        out = query_sentinel(
+            op,
+            thread_id=tid,
+            client=client,
+            cluster_id=cluster_id,
+            namespace=ns,
+            name="shared-pod",
+        )
         print(f"=== {op} (live) ===")
         print(format_query_result(out), end="")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Step 8 full pipeline demo")
-    parser.add_argument("--live", action="store_true", help="Sync + query via LangGraph")
-    parser.add_argument("--namespace", default="default")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--live", action="store_true")
+    parser.add_argument("--cluster-id", default=CLUSTER_LOCAL)
     parser.add_argument(
         "--thread-id",
-        default=os.environ.get("LANGGRAPH_THREAD_ID", "step8-demo"),
+        default=None,
+        help="LangGraph thread (default: {tenant}:{cluster_id})",
     )
+    parser.add_argument("--tenant-id", default=None)
     args = parser.parse_args()
 
     if args.live:
@@ -122,12 +109,12 @@ def main() -> int:
             "true",
             "yes",
         ):
-            print("Set LANGGRAPH_RUN_LIVE=1 for --live", file=sys.stderr)
+            print("Set LANGGRAPH_RUN_LIVE=1", file=sys.stderr)
             return 1
-        _live_demo(args.namespace, args.thread_id)
+        _live_demo(args.cluster_id, args.thread_id, args.tenant_id)
         return 0
 
-    _print_queries(_build_payload(args.namespace), args.namespace)
+    _print_multicluster_mock()
     return 0
 
 

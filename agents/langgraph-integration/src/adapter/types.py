@@ -10,3 +10,4 @@ class McpListResponse(TypedDict, total=False):
 
     query: str
     results: list[dict[str, Any]]
+    cluster_id: str

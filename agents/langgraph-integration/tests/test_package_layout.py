@@ -36,10 +36,15 @@ class TestPushGraphBatch(unittest.TestCase):
     def test_push_passes_payload_shape(self) -> None:
         from models.entities import GraphBatch, entity_from_pod_row
         from sync.pipeline import push_graph_batch
+        from testing.multicluster_fixtures import CLUSTER_LOCAL
 
         batch = GraphBatch(
             entities=[
-                entity_from_pod_row({"name": "p1", "status": "Running"}, "default")
+                entity_from_pod_row(
+                    {"name": "p1", "status": "Running"},
+                    "default",
+                    cluster_id=CLUSTER_LOCAL,
+                )
             ]
         )
         fake_stream = iter([{"payload": {}}])

@@ -10,6 +10,7 @@ from models.entities import (
     entity_from_node,
 )
 from models.ids import pod_id
+from models.scope import resolve_cluster_id
 
 
 def pods_events_to_batch(
@@ -17,19 +18,23 @@ def pods_events_to_batch(
     events_mcp: McpListResponse,
     namespace: str,
     *,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
     link_pod_events: bool = True,
     pod_node_map: dict[str, str] | None = None,
 ) -> GraphBatch:
     """Map ``k8s_get_pods`` + ``k8s_get_events`` MCP payloads to a ``GraphBatch``.
 
-    ``namespace`` is the tool argument for pods (not present in each pod row).
-    ``pod_node_map`` maps pod name → node name when nodeName is known outside MCP
-    normalize (e.g. raw API); creates Node entities and ``scheduled_on`` edges.
+    ``cluster_id`` may be set on MCP payloads or passed explicitly.
+    ``pod_node_map`` maps pod name → node name when nodeName is known outside MCP.
     """
+    cid = resolve_cluster_id(pods_mcp, events_mcp, cluster_id=cluster_id)
     batch = GraphBatch.from_pods_events(
         pods_mcp,
         events_mcp,
         namespace,
+        cluster_id=cid,
+        tenant_id=tenant_id,
         link_pod_events=link_pod_events,
     )
     if not pod_node_map:
@@ -40,10 +45,10 @@ def pods_events_to_batch(
     pod_ids_in_batch = {e.id for e in batch.entities if e.type is EntityType.POD}
 
     for pod_name, node_name in pod_node_map.items():
-        pid = pod_id(ns, pod_name.strip())
+        pid = pod_id(cid, ns, pod_name.strip())
         if pid not in pod_ids_in_batch:
             continue
-        node_ent = entity_from_node(node_name)
+        node_ent = entity_from_node(node_name, cluster_id=cid, tenant_id=tenant_id)
         if node_ent.id not in entity_ids:
             batch.entities.append(node_ent)
             entity_ids.add(node_ent.id)

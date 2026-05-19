@@ -7,6 +7,7 @@ from typing import Any
 
 from adapter.types import McpListResponse
 from models.entities import GraphBatch, GraphEntity, entity_from_pod_row
+from models.scope import resolve_cluster_id
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,8 @@ def pods_to_entities(
     mcp_json: McpListResponse,
     namespace: str,
     *,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
     labels: dict[str, str] | None = None,
     creation_timestamp: str | None = None,
 ) -> list[GraphEntity]:
@@ -30,6 +33,7 @@ def pods_to_entities(
     ``namespace`` comes from the tool argument, not from each MCP row.
     Rows without ``name`` or non-dict rows are skipped with a warning (batch continues).
     """
+    cid = resolve_cluster_id(mcp_json, cluster_id=cluster_id)
     entities: list[GraphEntity] = []
     for row in mcp_json.get("results") or []:
         if not isinstance(row, dict):
@@ -42,6 +46,8 @@ def pods_to_entities(
             entity_from_pod_row(
                 row,
                 namespace,
+                cluster_id=cid,
+                tenant_id=tenant_id,
                 labels=labels,
                 creation_timestamp=creation_timestamp,
             )
@@ -61,6 +67,13 @@ def pods_to_langgraph_entities(
 def pods_mcp_to_batch(
     mcp_json: McpListResponse,
     namespace: str,
+    *,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> GraphBatch:
     """Convenience: pods-only ``GraphBatch`` (no edges)."""
-    return GraphBatch(entities=pods_to_entities(mcp_json, namespace))
+    return GraphBatch(
+        entities=pods_to_entities(
+            mcp_json, namespace, cluster_id=cluster_id, tenant_id=tenant_id
+        )
+    )

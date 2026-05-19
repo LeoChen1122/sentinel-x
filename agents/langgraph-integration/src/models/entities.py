@@ -1,6 +1,6 @@
 """Graph entity / edge contracts for MCP → LangGraph (step 2).
 
-MCP tool contract (unchanged): ``{"query": str, "results": list[dict]}``.
+MCP tool contract: ``{"query": str, "results": list[dict], "cluster_id": str}`` (phase 4-0).
 
 MCP row → graph property mapping
 ---------------------------------
@@ -242,9 +242,14 @@ class GraphBatch:
         events_mcp: dict[str, Any],
         namespace: str,
         *,
+        cluster_id: str | None = None,
+        tenant_id: str | None = None,
         link_pod_events: bool = True,
     ) -> GraphBatch:
         """Build entities and Pod→Event edges from MCP ``{query, results}`` payloads."""
+        from models.scope import resolve_cluster_id
+
+        cid = resolve_cluster_id(pods_mcp, events_mcp, cluster_id=cluster_id)
         batch = cls()
         entity_by_id: dict[str, GraphEntity] = {}
         pod_by_key: dict[tuple[str, str], GraphEntity] = {}
@@ -257,12 +262,14 @@ class GraphBatch:
             if name is None or not str(name).strip():
                 logger.warning("Skipping pod row missing name: %r", row)
                 continue
-            ent = entity_from_pod_row(row, namespace)
+            ent = entity_from_pod_row(
+                row, namespace, cluster_id=cid, tenant_id=tenant_id
+            )
             entity_by_id[ent.id] = ent
             pod_by_key[(ent.properties["namespace"], ent.properties["name"])] = ent
 
         for row in events_mcp.get("results") or []:
-            ent = entity_from_event_row(row)
+            ent = entity_from_event_row(row, cluster_id=cid, tenant_id=tenant_id)
             entity_by_id[ent.id] = ent
             if not link_pod_events:
                 continue
@@ -285,10 +292,13 @@ def entity_from_pod_row(
     row: McpPodRow | dict[str, Any],
     namespace: str,
     *,
+    cluster_id: str,
+    tenant_id: str | None = None,
     labels: dict[str, str] | None = None,
     creation_timestamp: str | None = None,
 ) -> GraphEntity:
     from models.ids import pod_id
+    from models.scope import stamp_scope
 
     name = str(row["name"]).strip()
     props: PodProperties = {
@@ -303,13 +313,19 @@ def entity_from_pod_row(
         out["creationTimestamp"] = creation_timestamp
     return GraphEntity(
         type=EntityType.POD,
-        id=pod_id(namespace, name),
-        properties=out,
+        id=pod_id(cluster_id, namespace, name),
+        properties=stamp_scope(out, cluster_id=cluster_id, tenant_id=tenant_id),
     )
 
 
-def entity_from_event_row(row: McpEventRow | dict[str, Any]) -> GraphEntity:
+def entity_from_event_row(
+    row: McpEventRow | dict[str, Any],
+    *,
+    cluster_id: str,
+    tenant_id: str | None = None,
+) -> GraphEntity:
     from models.ids import event_id
+    from models.scope import stamp_scope
 
     namespace = str(row.get("namespace") or "default").strip()
     object_kind = str(row.get("object_kind") or "Unknown").strip()
@@ -329,6 +345,7 @@ def entity_from_event_row(row: McpEventRow | dict[str, Any]) -> GraphEntity:
             props[key] = row[key]
 
     eid = event_id(
+        cluster_id=cluster_id,
         namespace=namespace,
         object_kind=object_kind,
         object_name=object_name,
@@ -336,16 +353,31 @@ def entity_from_event_row(row: McpEventRow | dict[str, Any]) -> GraphEntity:
         last_timestamp=last_ts_str,
         message=str(row.get("message") or "") if row.get("message") else None,
     )
-    return GraphEntity(type=EntityType.EVENT, id=eid, properties=props)
+    return GraphEntity(
+        type=EntityType.EVENT,
+        id=eid,
+        properties=stamp_scope(props, cluster_id=cluster_id, tenant_id=tenant_id),
+    )
 
 
-def entity_from_node(name: str, *, labels: dict[str, str] | None = None) -> GraphEntity:
+def entity_from_node(
+    name: str,
+    *,
+    cluster_id: str,
+    tenant_id: str | None = None,
+    labels: dict[str, str] | None = None,
+) -> GraphEntity:
     from models.ids import node_id
+    from models.scope import stamp_scope
 
     props: dict[str, Any] = {"name": name.strip()}
     if labels:
         props["labels"] = dict(labels)
-    return GraphEntity(type=EntityType.NODE, id=node_id(name), properties=props)
+    return GraphEntity(
+        type=EntityType.NODE,
+        id=node_id(cluster_id, name),
+        properties=stamp_scope(props, cluster_id=cluster_id, tenant_id=tenant_id),
+    )
 
 
 def entity_from_inspection(
@@ -353,8 +385,12 @@ def entity_from_inspection(
     node: str,
     status: str,
     summary: str,
+    *,
+    cluster_id: str,
+    tenant_id: str | None = None,
 ) -> GraphEntity:
     from models.ids import inspection_id
+    from models.scope import stamp_scope
 
     props: InspectionProperties = {
         "timestamp": timestamp.strip(),
@@ -364,8 +400,10 @@ def entity_from_inspection(
     }
     return GraphEntity(
         type=EntityType.INSPECTION,
-        id=inspection_id(timestamp, node),
-        properties=dict(props),
+        id=inspection_id(cluster_id, timestamp, node),
+        properties=stamp_scope(
+            dict(props), cluster_id=cluster_id, tenant_id=tenant_id
+        ),
     )
 
 
