@@ -101,12 +101,16 @@ def gather(state: State) -> State:
 
 
 def narrate(state: State) -> State:
-    """Build template inspection report from ``payload.gather`` → ``payload.narrative``."""
+    """Build inspection report from ``payload.gather`` → ``payload.narrative``."""
     payload = dict(state.get("payload") or {})
     raw_gather = payload.get("gather")
     if not isinstance(raw_gather, dict):
         return {"payload": payload}
-    report = build_report_from_gather_dict(raw_gather)
+    use_llm: bool | None = None
+    req = parse_inspect_request(payload)
+    if req is not None and "use_llm" in req:
+        use_llm = req.get("use_llm")
+    report = build_report_from_gather_dict(raw_gather, use_llm=use_llm)
     payload["narrative"] = dict(report)
     return {"payload": payload}
 

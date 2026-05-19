@@ -27,6 +27,7 @@ class InspectRequest(TypedDict, total=False):
     namespace: str
     pod_name: str
     tenant_id: str | None
+    use_llm: bool | None
 
 
 class GatherResult(TypedDict):
@@ -40,7 +41,7 @@ class GatherResult(TypedDict):
     queries: dict[str, Any]
 
 
-class InspectionReport(TypedDict):
+class InspectionReport(TypedDict, total=False):
     """Final narrative (``payload.narrative``)."""
 
     cluster_id: str
@@ -53,3 +54,4 @@ class InspectionReport(TypedDict):
     linked_pods: list[LinkedEntity]
     linked_inspections: list[LinkedEntity]
     summary: str
+    narrative_source: str

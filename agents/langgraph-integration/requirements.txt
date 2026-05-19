@@ -1,1 +1,2 @@
 langgraph-sdk
+openai>=1.0.0

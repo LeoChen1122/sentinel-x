@@ -16,8 +16,9 @@ def build_inspection_report(
     namespace: str,
     pod_name: str,
     tenant_id: str | None = None,
+    use_llm: bool | None = None,
 ) -> InspectionReport:
-    """Pure function: gather subgraph + template narrative."""
+    """Pure function: gather subgraph + narrative (template or LLM polish)."""
     _ = tenant_id  # phase C ACL
     gather = gather_subgraph(
         payload,
@@ -25,4 +26,4 @@ def build_inspection_report(
         namespace=namespace,
         pod_name=pod_name,
     )
-    return build_report(gather)
+    return build_report(gather, use_llm=use_llm)

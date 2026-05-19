@@ -85,4 +85,10 @@ def parse_inspect_request(payload: dict[str, Any]) -> InspectRequest | None:
     tid = raw.get("tenant_id")
     if tid is not None and str(tid).strip():
         req["tenant_id"] = str(tid).strip()
+    if "use_llm" in raw:
+        val = raw["use_llm"]
+        if isinstance(val, bool):
+            req["use_llm"] = val
+        else:
+            req["use_llm"] = str(val).strip().lower() in ("1", "true", "yes")
     return req

@@ -40,8 +40,8 @@ def _linked_pod(entity_id: str, label: str | None = None) -> LinkedEntity:
     )
 
 
-def build_report(gather: GatherResult) -> InspectionReport:
-    """Turn gather facts into structured ``InspectionReport``."""
+def build_report_template(gather: GatherResult) -> InspectionReport:
+    """Turn gather facts into structured ``InspectionReport`` (phase A template)."""
     q = gather["queries"]
     pod_status = q.get("pod_status") or {}
     events_q = q.get("events_for_pod") or {}
@@ -164,9 +164,34 @@ def build_report(gather: GatherResult) -> InspectionReport:
         linked_pods=linked_pods,
         linked_inspections=linked_inspections,
         summary=summary,
+        narrative_source="template",
     )
 
 
-def build_report_from_gather_dict(gather: dict[str, Any]) -> InspectionReport:
+def build_report(
+    gather: GatherResult,
+    *,
+    use_llm: bool | None = None,
+) -> InspectionReport:
+    """Template report; optionally polish ``markdown``/``summary`` with OpenAI."""
+    from agent.llm import llm_enabled, polish_inspection_report
+
+    base = build_report_template(gather)
+    if use_llm is False:
+        return base
+    if use_llm is True:
+        if llm_enabled():
+            return polish_inspection_report(base, gather)
+        return base
+    if llm_enabled():
+        return polish_inspection_report(base, gather)
+    return base
+
+
+def build_report_from_gather_dict(
+    gather: dict[str, Any],
+    *,
+    use_llm: bool | None = None,
+) -> InspectionReport:
     """Accept wire ``payload.gather`` dict."""
-    return build_report(GatherResult(**gather))
+    return build_report(GatherResult(**gather), use_llm=use_llm)

@@ -272,6 +272,37 @@ python scripts\inspect_narrative_demo.py
 
 **linked_events** = `events_for_pod` (`has_event` edges). **linked_pods** = `inspections_for_pod` (`inspects_pod`).
 
+## Agent phase B: LLM polish (optional)
+
+Polishes only `markdown` and `summary` via OpenAI SDK; `linked_events` / `linked_pods` / `sections` stay from the template layer.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SENTINEL_LLM_ENABLED` | `0` | Set `1` with `OPENAI_API_KEY` to enable |
+| `OPENAI_API_KEY` | — | API key (or compatible gateway with `OPENAI_BASE_URL`) |
+| `SENTINEL_LLM_MODEL` | `gpt-4o-mini` | Model name |
+| `SENTINEL_LLM_TIMEOUT_SEC` | `30` | Request timeout |
+
+On API failure or missing key, reports fall back to phase A template (`narrative_source=template`).
+
+```python
+report = build_inspection_report(
+    payload,
+    cluster_id="dev-cluster",
+    namespace="default",
+    pod_name="shared-pod",
+    use_llm=True,
+)
+print(report["narrative_source"])  # "llm" or "template"
+```
+
+LangGraph: set `payload.inspect.use_llm` to `true` for the `narrate` node.
+
+```powershell
+python -m unittest tests.test_agent_narrative_llm -v
+python scripts\inspect_narrative_demo.py --llm
+```
+
 ## Multicluster acceptance (mock)
 
 Validates Node / Inspection IDs and edges, Adapter stability, Query with `cluster_id`, and per-cluster LangGraph `thread_id` (no live K8s required).

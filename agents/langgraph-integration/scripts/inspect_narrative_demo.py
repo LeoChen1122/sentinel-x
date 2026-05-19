@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
-"""Agent phase A demo: inspection narrative from mock multicluster graph."""
+"""Agent phase A/B demo: inspection narrative from mock multicluster graph."""
 
 from __future__ import annotations
 
+import argparse
 import sys
+from collections import Counter
 from pathlib import Path
 
 _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from agent import build_inspection_report  # noqa: E402
+from agent import build_inspection_report, llm_enabled  # noqa: E402
 from testing.multicluster_fixtures import (  # noqa: E402
     CLUSTER_DEV,
     CLUSTER_PROD,
@@ -28,12 +30,26 @@ def _print_linked(title: str, items: list) -> None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Inspection narrative demo")
+    parser.add_argument(
+        "--llm",
+        action="store_true",
+        help="Enable OpenAI polish (requires SENTINEL_LLM_ENABLED=1 and OPENAI_API_KEY)",
+    )
+    args = parser.parse_args()
+
+    if args.llm and not llm_enabled():
+        print(
+            "Note: --llm requested but LLM not enabled (set SENTINEL_LLM_ENABLED=1 "
+            "and OPENAI_API_KEY). Falling back to template.",
+            file=sys.stderr,
+        )
+
     batch = dual_cluster_rich_batch()
     payload = batch.to_dict(wire_only=True)
+    use_llm = True if args.llm else False
 
     print("=== entity counts by cluster ===")
-    from collections import Counter
-
     by_cluster: dict[str, Counter[str]] = {}
     for ent in batch.entities:
         cid = str(ent.properties.get("cluster_id", "?"))
@@ -48,7 +64,9 @@ def main() -> int:
             cluster_id=cid,
             namespace="default",
             pod_name=pod,
+            use_llm=use_llm if args.llm else False,
         )
+        print(f"narrative_source: {report.get('narrative_source', 'template')}")
         print(f"summary: {report['summary']}")
         print(f"pod_entity_id: {report['pod_entity_id']}")
         for sec in report["sections"]:

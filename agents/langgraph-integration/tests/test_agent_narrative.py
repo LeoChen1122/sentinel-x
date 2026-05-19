@@ -31,6 +31,7 @@ class TestInspectionReportShape(unittest.TestCase):
             cluster_id=CLUSTER_DEV,
             namespace="default",
             pod_name="shared-pod",
+            use_llm=False,
         )
         self.assertIn("markdown", report)
         self.assertIn("sections", report)
@@ -46,6 +47,7 @@ class TestInspectionReportShape(unittest.TestCase):
             cluster_id=CLUSTER_DEV,
             namespace="default",
             pod_name="shared-pod",
+            use_llm=False,
         )
         for le in report["linked_events"]:
             self.assertTrue(le["entity_id"].startswith(f"event:{CLUSTER_DEV}:"))
@@ -56,12 +58,14 @@ class TestInspectionReportShape(unittest.TestCase):
             cluster_id=CLUSTER_DEV,
             namespace="default",
             pod_name="shared-pod",
+            use_llm=False,
         )
         prod = build_inspection_report(
             self.payload,
             cluster_id=CLUSTER_PROD,
             namespace="default",
             pod_name="shared-pod",
+            use_llm=False,
         )
         self.assertNotEqual(dev["pod_entity_id"], prod["pod_entity_id"])
         self.assertIn(CLUSTER_DEV, dev["markdown"])
@@ -91,6 +95,7 @@ class TestRichMulticlusterNarrative(unittest.TestCase):
             cluster_id=CLUSTER_DEV,
             namespace="default",
             pod_name="shared-pod",
+            use_llm=False,
         )
         self.assertIn("needs attention", report["summary"])
         self.assertGreaterEqual(len(report["linked_events"]), 1)
@@ -101,6 +106,7 @@ class TestRichMulticlusterNarrative(unittest.TestCase):
             cluster_id=CLUSTER_DEV,
             namespace="default",
             pod_name="crash-pod",
+            use_llm=False,
         )
         self.assertIn("CrashLoopBackOff", report["markdown"])
 
@@ -111,6 +117,7 @@ class TestRichMulticlusterNarrative(unittest.TestCase):
             cluster_id=CLUSTER_DEV,
             namespace="default",
             pod_name="shared-pod",
+            use_llm=False,
         )
         pid = pod_id(CLUSTER_DEV, "default", "shared-pod")
         self.assertEqual(report["pod_entity_id"], pid)
@@ -127,7 +134,7 @@ class TestGraphNarrateFlow(unittest.TestCase):
             namespace="default",
             pod_name="shared-pod",
         )
-        report = build_report(g)
+        report = build_report(g, use_llm=False)
         self.assertEqual(report["cluster_id"], CLUSTER_DEV)
         self.assertIn("Inspection report", report["markdown"])
 
