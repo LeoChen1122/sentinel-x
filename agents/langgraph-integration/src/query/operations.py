@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from config.tenant_registry import TenantAccessError, allowed_clusters, assert_tenant_cluster_access
 from models.entities import EntityType, RelationType
 from query.graph_view import GraphView
 
@@ -18,50 +19,115 @@ def _require_cluster_id(cluster_id: str | None) -> str:
     return str(cluster_id).strip()
 
 
+def _active_tenant_id(tenant_id: str | None) -> str | None:
+    if tenant_id is None:
+        return None
+    tid = str(tenant_id).strip()
+    return tid if tid else None
+
+
 def _props_cluster(props: dict[str, Any]) -> str:
     return str(props.get("cluster_id", ""))
+
+
+def _props_tenant(props: dict[str, Any]) -> str:
+    return str(props.get("tenant_id", ""))
+
+
+def _entity_matches_tenant(ent: dict[str, Any], tenant_id: str) -> bool:
+    props = ent.get("properties") or {}
+    return _props_tenant(props) == tenant_id
+
+
+def _acl_cluster(tenant_id: str | None, cluster_id: str | None) -> None:
+    tid = _active_tenant_id(tenant_id)
+    if tid is None:
+        return
+    cid = _require_cluster_id(cluster_id)
+    assert_tenant_cluster_access(tid, cid)
 
 
 def run_query(payload: dict[str, Any], op: str, **params: Any) -> dict[str, Any]:
     """Run ``op`` against ``payload`` with ``entities`` / ``edges``."""
     view = GraphView.from_payload(payload)
+    tenant_id = params.get("tenant_id")
+    if op == "list_clusters_for_tenant":
+        return _list_clusters_for_tenant(params.get("tenant_id"))
     if op == "list_pods":
-        return _list_pods(view, params.get("cluster_id"), params.get("namespace"))
+        return _list_pods(
+            view, params.get("cluster_id"), params.get("namespace"), tenant_id=tenant_id
+        )
     if op == "pod_status":
+        cid = _require_cluster_id(params.get("cluster_id"))
+        _acl_cluster(tenant_id, cid)
         return _pod_status(
             view,
-            _require_cluster_id(params.get("cluster_id")),
+            cid,
             params.get("namespace"),
             params.get("name"),
+            tenant_id=tenant_id,
         )
     if op == "events_for_pod":
+        cid = _require_cluster_id(params.get("cluster_id"))
+        _acl_cluster(tenant_id, cid)
         return _events_for_pod(
             view,
-            _require_cluster_id(params.get("cluster_id")),
+            cid,
             params.get("namespace"),
             params.get("name"),
+            tenant_id=tenant_id,
         )
     if op == "inspections_summary":
-        return _inspections_summary(view, params.get("cluster_id"))
+        return _inspections_summary(view, params.get("cluster_id"), tenant_id=tenant_id)
     if op == "list_events":
-        return _list_events(view, params.get("cluster_id"), params.get("namespace"))
+        return _list_events(
+            view, params.get("cluster_id"), params.get("namespace"), tenant_id=tenant_id
+        )
     if op == "inspections_for_pod":
+        cid = _require_cluster_id(params.get("cluster_id"))
+        _acl_cluster(tenant_id, cid)
         return _inspections_for_pod(
             view,
-            _require_cluster_id(params.get("cluster_id")),
+            cid,
             params.get("namespace"),
             params.get("name"),
+            tenant_id=tenant_id,
         )
     raise QueryError(f"unknown query op: {op}")
 
 
+def _list_clusters_for_tenant(tenant_id: str | None) -> dict[str, Any]:
+    tid = _active_tenant_id(tenant_id)
+    if tid is None:
+        raise QueryError("list_clusters_for_tenant requires tenant_id")
+    clusters = allowed_clusters(tid)
+    return {"op": "list_clusters_for_tenant", "tenant_id": tid, "clusters": clusters}
+
+
+def _filter_entities_by_tenant(
+    entities: list[dict[str, Any]], tenant_id: str | None
+) -> list[dict[str, Any]]:
+    tid = _active_tenant_id(tenant_id)
+    if tid is None:
+        return entities
+    return [e for e in entities if _entity_matches_tenant(e, tid)]
+
+
 def _list_pods(
-    view: GraphView, cluster_id: str | None, namespace: str | None
+    view: GraphView,
+    cluster_id: str | None,
+    namespace: str | None,
+    *,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
+    tid = _active_tenant_id(tenant_id)
+    if tid is not None:
+        _acl_cluster(tenant_id, cluster_id)
     pods = view.entities_by_type(EntityType.POD.value)
     if cluster_id is not None:
         cid = str(cluster_id).strip()
         pods = [p for p in pods if _props_cluster(p.get("properties") or {}) == cid]
+    pods = _filter_entities_by_tenant(pods, tenant_id)
     if namespace is not None:
         ns = str(namespace).strip()
         pods = [p for p in pods if str(p.get("properties", {}).get("namespace")) == ns]
@@ -85,12 +151,15 @@ def _pod_status(
     cluster_id: str,
     namespace: str | None,
     name: str | None,
+    *,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     if not namespace or not name:
         raise QueryError("pod_status requires namespace and name")
     pid = view.pod_entity_id(cluster_id, str(namespace), str(name))
     ent = view.entities.get(pid)
-    if ent is None:
+    tid = _active_tenant_id(tenant_id)
+    if ent is None or (tid is not None and not _entity_matches_tenant(ent, tid)):
         return {
             "op": "pod_status",
             "found": False,
@@ -112,11 +181,26 @@ def _events_for_pod(
     cluster_id: str,
     namespace: str | None,
     name: str | None,
+    *,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     if not namespace or not name:
         raise QueryError("events_for_pod requires namespace and name")
     pid = view.pod_entity_id(cluster_id, str(namespace), str(name))
+    tid = _active_tenant_id(tenant_id)
+    pod_ent = view.entities.get(pid)
+    if pod_ent is None or (tid is not None and not _entity_matches_tenant(pod_ent, tid)):
+        return {
+            "op": "events_for_pod",
+            "pod_id": pid,
+            "cluster_id": cluster_id,
+            "namespace": namespace,
+            "name": name,
+            "count": 0,
+            "events": [],
+        }
     events = view.events_for_pod_id(pid)
+    events = _filter_entities_by_tenant(events, tenant_id)
     rows = []
     for ev in events:
         props = ev.get("properties") or {}
@@ -141,8 +225,14 @@ def _events_for_pod(
 
 
 def _inspections_summary(
-    view: GraphView, cluster_id: str | None
+    view: GraphView,
+    cluster_id: str | None,
+    *,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
+    tid = _active_tenant_id(tenant_id)
+    if tid is not None:
+        _acl_cluster(tenant_id, cluster_id)
     inspections = view.entities_by_type(EntityType.INSPECTION.value)
     if cluster_id is not None:
         cid = str(cluster_id).strip()
@@ -151,6 +241,7 @@ def _inspections_summary(
             for i in inspections
             if _props_cluster(i.get("properties") or {}) == cid
         ]
+    inspections = _filter_entities_by_tenant(inspections, tenant_id)
     rows = []
     for insp in inspections:
         props = insp.get("properties") or {}
@@ -183,12 +274,20 @@ def _inspections_summary(
 
 
 def _list_events(
-    view: GraphView, cluster_id: str | None, namespace: str | None
+    view: GraphView,
+    cluster_id: str | None,
+    namespace: str | None,
+    *,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
+    tid = _active_tenant_id(tenant_id)
+    if tid is not None:
+        _acl_cluster(tenant_id, cluster_id)
     events = view.entities_by_type(EntityType.EVENT.value)
     if cluster_id is not None:
         cid = str(cluster_id).strip()
         events = [e for e in events if _props_cluster(e.get("properties") or {}) == cid]
+    events = _filter_entities_by_tenant(events, tenant_id)
     if namespace is not None:
         ns = str(namespace).strip()
         events = [
@@ -219,10 +318,24 @@ def _inspections_for_pod(
     cluster_id: str,
     namespace: str | None,
     name: str | None,
+    *,
+    tenant_id: str | None = None,
 ) -> dict[str, Any]:
     if not namespace or not name:
         raise QueryError("inspections_for_pod requires namespace and name")
     pid = view.pod_entity_id(cluster_id, str(namespace), str(name))
+    tid = _active_tenant_id(tenant_id)
+    pod_ent = view.entities.get(pid)
+    if pod_ent is None or (tid is not None and not _entity_matches_tenant(pod_ent, tid)):
+        return {
+            "op": "inspections_for_pod",
+            "pod_id": pid,
+            "cluster_id": cluster_id,
+            "namespace": namespace,
+            "name": name,
+            "count": 0,
+            "inspections": [],
+        }
     inspection_ids = {
         str(e["source_id"])
         for e in view.edges
@@ -234,6 +347,8 @@ def _inspections_for_pod(
     for iid in sorted(inspection_ids):
         ent = view.entities.get(iid)
         if ent is None:
+            continue
+        if tid is not None and not _entity_matches_tenant(ent, tid):
             continue
         props = ent.get("properties") or {}
         rows.append(
@@ -254,3 +369,6 @@ def _inspections_for_pod(
         "count": len(rows),
         "inspections": rows,
     }
+
+
+__all__ = ["QueryError", "TenantAccessError", "run_query"]

@@ -303,6 +303,39 @@ python -m unittest tests.test_agent_narrative_llm -v
 python scripts\inspect_narrative_demo.py --llm
 ```
 
+## Agent phase C: tenant ACL (mock registry)
+
+Runtime ACL over mock tenant → cluster mapping. **Omitting `tenant_id` keeps third-edition behavior** (no registry lookup, no property filter).
+
+| Tenant | Allowed clusters |
+|--------|------------------|
+| `team-alpha` | `dev-cluster` |
+| `team-beta` | `dev-cluster`, `prod-cluster` |
+
+- `tenant_id` lives in **properties** and request params only; **ID strings are unchanged**.
+- Unauthorized cluster → `TenantAccessError`; authorized cluster but another tenant’s entity → empty / `found: false`.
+- Optional override: copy `configs/tenants.example.yaml` → `configs/tenants.yaml`.
+
+```python
+from agent import build_inspection_report
+
+report = build_inspection_report(
+    payload,
+    cluster_id="dev-cluster",
+    namespace="default",
+    pod_name="alpha-dev-pod",
+    tenant_id="team-alpha",
+)
+```
+
+```powershell
+python -m unittest tests.test_tenant_acl tests.test_agent_tenant_narrative -v
+python scripts\inspect_narrative_demo.py --tenant-id team-alpha --cluster-id dev-cluster
+python scripts\inspect_narrative_demo.py --tenant-id team-alpha --cluster-id prod-cluster
+```
+
+Fixture: `tenant_acl_matrix_batch()` — four cells (alpha/beta × dev/prod) in one payload.
+
 ## Multicluster acceptance (mock)
 
 Validates Node / Inspection IDs and edges, Adapter stability, Query with `cluster_id`, and per-cluster LangGraph `thread_id` (no live K8s required).

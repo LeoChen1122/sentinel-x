@@ -1,0 +1,6 @@
+# Copy to tenants.yaml to override built-in mock registry (optional).
+tenants:
+  - id: team-alpha
+    clusters: [dev-cluster]
+  - id: team-beta
+    clusters: [dev-cluster, prod-cluster]

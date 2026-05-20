@@ -13,8 +13,17 @@ CLUSTER_DEV = "dev-cluster"
 CLUSTER_PROD = "prod-cluster"
 CLUSTER_LOCAL = "local"
 
+TENANT_ALPHA = "team-alpha"
+TENANT_BETA = "team-beta"
+
 _DEFAULT_NODE = "worker-01"
 _DEFAULT_POD = "shared-pod"
+
+# Tenant ACL matrix pods (phase C)
+POD_ALPHA_DEV = "alpha-dev-pod"
+POD_BETA_DEV = "beta-dev-pod"
+POD_BETA_PROD = "beta-prod-pod"
+POD_ALPHA_PROD = "alpha-prod-pod"
 
 
 def pods_mcp(
@@ -270,3 +279,42 @@ def dual_cluster_rich_payload(
     tenant_id: str | None = None,
 ) -> dict:
     return dual_cluster_rich_batch(namespace, tenant_id=tenant_id).to_dict(wire_only=True)
+
+
+def batch_for_tenant_cluster(
+    tenant_id: str,
+    cluster_id: str,
+    *,
+    namespace: str = "default",
+    pod_name: str = _DEFAULT_POD,
+    node_name: str = _DEFAULT_NODE,
+) -> GraphBatch:
+    """Minimal Pod + Event + Node + Inspection for one tenant/cluster cell."""
+    return cluster_full_batch(
+        cluster_id,
+        namespace,
+        tenant_id=tenant_id,
+        pod_name=pod_name,
+        node_name=node_name,
+    )
+
+
+def tenant_acl_matrix_batch(namespace: str = "default") -> GraphBatch:
+    """Four-cell matrix: alpha/beta × dev/prod for tenant ACL tests."""
+    a1 = batch_for_tenant_cluster(
+        TENANT_ALPHA, CLUSTER_DEV, namespace=namespace, pod_name=POD_ALPHA_DEV
+    )
+    a2 = batch_for_tenant_cluster(
+        TENANT_BETA, CLUSTER_DEV, namespace=namespace, pod_name=POD_BETA_DEV
+    )
+    b1 = batch_for_tenant_cluster(
+        TENANT_BETA, CLUSTER_PROD, namespace=namespace, pod_name=POD_BETA_PROD
+    )
+    b2 = batch_for_tenant_cluster(
+        TENANT_ALPHA, CLUSTER_PROD, namespace=namespace, pod_name=POD_ALPHA_PROD
+    )
+    return merge_graph_batches(a1, a2, b1, b2)
+
+
+def tenant_acl_matrix_payload(namespace: str = "default") -> dict:
+    return tenant_acl_matrix_batch(namespace).to_dict(wire_only=True)

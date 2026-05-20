@@ -19,11 +19,11 @@ def build_inspection_report(
     use_llm: bool | None = None,
 ) -> InspectionReport:
     """Pure function: gather subgraph + narrative (template or LLM polish)."""
-    _ = tenant_id  # phase C ACL
     gather = gather_subgraph(
         payload,
         cluster_id=cluster_id,
         namespace=namespace,
         pod_name=pod_name,
+        tenant_id=tenant_id,
     )
     return build_report(gather, use_llm=use_llm)

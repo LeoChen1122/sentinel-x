@@ -95,6 +95,7 @@ def gather(state: State) -> State:
         cluster_id=req["cluster_id"],
         namespace=req["namespace"],
         pod_name=req["pod_name"],
+        tenant_id=req.get("tenant_id"),
     )
     payload["gather"] = dict(gather_result)
     return {"payload": payload}
