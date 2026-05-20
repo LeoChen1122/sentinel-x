@@ -12,7 +12,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from models.scope import sync_thread_id  # noqa: E402
+from models.scope import langgraph_thread_id, sync_thread_id  # noqa: E402
 from query import format_query_result, run_query  # noqa: E402
 from sync.multicluster import make_mock_cluster_sync, sync_clusters_resilient  # noqa: E402
 from testing.multicluster_fixtures import (  # noqa: E402
@@ -72,10 +72,11 @@ def main() -> int:
     for cid in (CLUSTER_DEV, CLUSTER_PROD):
         r = mc.by_cluster[cid]
         print(
-            f"  {cid}: thread={sync_thread_id(cid)} "
+            f"  {cid}: logical={sync_thread_id(cid)} "
+            f"langgraph_thread={langgraph_thread_id(cid)} "
             f"entities_pushed={r.entities_pushed} chunks={r.chunks_sent}"
         )
-    if threads != [sync_thread_id(CLUSTER_DEV), sync_thread_id(CLUSTER_PROD)]:
+    if threads != [langgraph_thread_id(CLUSTER_DEV), langgraph_thread_id(CLUSTER_PROD)]:
         print("FAIL: unexpected thread_ids", threads, file=sys.stderr)
         return 1
 

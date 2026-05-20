@@ -11,6 +11,8 @@ _INTEGRATION_SRC = Path(__file__).resolve().parents[2] / "langgraph-integration"
 if str(_INTEGRATION_SRC) not in sys.path:
     sys.path.insert(0, str(_INTEGRATION_SRC))
 
+from agent.diagnose import diagnose_from_gather_dict  # noqa: E402
+from agent.execute import execute_recommended_actions  # noqa: E402
 from agent.gather import gather_subgraph, parse_inspect_request  # noqa: E402
 from agent.narrative import build_report_from_gather_dict  # noqa: E402
 from query.graph_view import GraphView  # noqa: E402
@@ -102,17 +104,59 @@ def gather(state: State) -> State:
 
 
 def narrate(state: State) -> State:
-    """Build inspection report from ``payload.gather`` → ``payload.narrative``."""
+    """Template + optional LLM polish using ``payload.gather`` and ``payload.diagnosis``."""
     payload = dict(state.get("payload") or {})
     raw_gather = payload.get("gather")
     if not isinstance(raw_gather, dict):
         return {"payload": payload}
     use_llm: bool | None = None
     req = parse_inspect_request(payload)
-    if req is not None and "use_llm" in req:
+    if req is not None:
         use_llm = req.get("use_llm")
-    report = build_report_from_gather_dict(raw_gather, use_llm=use_llm)
+    raw_diagnosis = payload.get("diagnosis")
+    diagnosis = raw_diagnosis if isinstance(raw_diagnosis, dict) else None
+    report = build_report_from_gather_dict(
+        raw_gather,
+        use_llm=use_llm,
+        diagnosis=diagnosis,
+    )
     payload["narrative"] = dict(report)
+    return {"payload": payload}
+
+
+def diagnose(state: State) -> State:
+    """Rule-based diagnosis from ``payload.gather`` → ``payload.diagnosis``."""
+    payload = dict(state.get("payload") or {})
+    raw_gather = payload.get("gather")
+    if not isinstance(raw_gather, dict):
+        return {"payload": payload}
+    req = parse_inspect_request(payload)
+    tenant_id = req.get("tenant_id") if req else None
+    report = diagnose_from_gather_dict(raw_gather, tenant_id=tenant_id)
+    payload["diagnosis"] = dict(report)
+    return {"payload": payload}
+
+
+def execute(state: State) -> State:
+    """Simulate recommended actions from ``payload.diagnosis`` → ``payload.execution``."""
+    payload = dict(state.get("payload") or {})
+    raw_diagnosis = payload.get("diagnosis")
+    if not isinstance(raw_diagnosis, dict):
+        return {"payload": payload}
+    dry_run = True
+    req = parse_inspect_request(payload)
+    if req is not None and "dry_run" in req:
+        dry_run = bool(req.get("dry_run", True))
+    from agent.actions.policy import action_context_from_diagnosis  # noqa: E402
+    from agent.types import DiagnosisReport  # noqa: E402
+
+    diagnosis = DiagnosisReport(**raw_diagnosis)
+    result = execute_recommended_actions(
+        diagnosis,
+        dry_run=dry_run,
+        context=action_context_from_diagnosis(diagnosis),
+    )
+    payload["execution"] = dict(result)
     return {"payload": payload}
 
 
@@ -131,11 +175,15 @@ builder = StateGraph(State)
 builder.add_node("ingest", ingest)
 builder.add_node("gather", gather)
 builder.add_node("narrate", narrate)
+builder.add_node("diagnose", diagnose)
+builder.add_node("execute", execute)
 builder.add_node("query", query)
 builder.add_edge(START, "ingest")
 builder.add_edge("ingest", "gather")
-builder.add_edge("gather", "narrate")
-builder.add_edge("narrate", "query")
+builder.add_edge("gather", "diagnose")
+builder.add_edge("diagnose", "narrate")
+builder.add_edge("narrate", "execute")
+builder.add_edge("execute", "query")
 builder.add_edge("query", END)
 
 graph = builder.compile()

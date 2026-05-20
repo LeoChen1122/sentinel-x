@@ -69,20 +69,22 @@ Copy `.env.example` and set:
 **Event-triggered** (after MCP returns):
 
 ```python
-from sync import sync_pods_and_events_resilient, sync_thread_id
+from sync import langgraph_thread_id, sync_pods_and_events_resilient, sync_thread_id
 
 result = sync_pods_and_events_resilient(
     pods_mcp, events_mcp, namespace, cluster_id="dev-cluster"
 )
-# Default LangGraph thread_id: "default:dev-cluster" (tenant:cluster)
+# Logical thread key (logs / sync state partition): "default:dev-cluster"
 sync_thread_id("dev-cluster", tenant_id="team-alpha")  # -> "team-alpha:dev-cluster"
+# LangGraph API thread_id (must be UUID):
+langgraph_thread_id("dev-cluster")  # -> deterministic UUID5
 ```
 
 ### Phase 4-2: multicluster sync partition
 
 | Concept | Behavior |
 |---------|----------|
-| `thread_id` | Default `{tenant_id or 'default'}:{cluster_id}` via `sync_thread_id()` |
+| `thread_id` | LangGraph API: `langgraph_thread_id()` (UUID5 from logical `{tenant}:{cluster}`) |
 | `SyncState` | Partitioned under `LANGGRAPH_SYNC_STATE_PATH/partitions/{tenant}/{cluster}.json` |
 | `SyncStateRegistry` | One in-memory/disk state per tenant+cluster |
 | `sync_clusters_resilient` | Tick multiple clusters with isolated state/thread |
@@ -153,7 +155,7 @@ result = query_sentinel(
 )
 ```
 
-Use the same `thread_id` for sync and query so checkpointed graph state accumulates. `sync_*_resilient` derives it from `cluster_id` / `tenant_id` when omitted; override with explicit `thread_id` if needed.
+Use the same LangGraph `thread_id` (UUID) for sync, query, and inspect so checkpointed graph state accumulates. `sync_*_resilient` calls `resolve_langgraph_thread_id(cluster_id=..., tenant_id=...)` when omitted. Pass `--thread-id` as a UUID or any label (mapped via UUID5). Logical key: `sync_thread_id()`.
 
 ## Step 8: Events + Inspections
 
@@ -244,13 +246,15 @@ python scripts\full_pipeline_demo.py --live --thread-id step8-demo
 
 ## Agent phase A: inspection narrative (mock, no LLM)
 
-Graph flow: `ingest → gather → narrate → query → END` ([`langgraph-server/src/graph.py`](../langgraph-server/src/graph.py)).
+Graph flow: `ingest → gather → diagnose → narrate → execute → query → END` ([`langgraph-server/src/graph.py`](../langgraph-server/src/graph.py)).
 
 | `payload` field | Role |
 |-----------------|------|
 | `inspect` | `{cluster_id, namespace, pod_name}` — triggers gather/narrate |
 | `gather` | Subgraph + `run_query` facts |
 | `narrative` | `InspectionReport` (markdown, sections, linked_events/pods) |
+| `diagnosis` | `DiagnosisReport` (rules_v1: issues, recommended_actions, severity) |
+| `execution` | `ExecutionResult` (dry-run simulated actions by default) |
 | `query` | Optional legacy `run_query` (step 6) |
 
 ```python
@@ -272,34 +276,47 @@ python scripts\inspect_narrative_demo.py
 
 **linked_events** = `events_for_pod` (`has_event` edges). **linked_pods** = `inspections_for_pod` (`inspects_pod`).
 
-## Agent phase B: LLM polish (optional)
+## Agent LLM narrative (Qwen `qwen3.6-plus`)
 
-Polishes only `markdown` and `summary` via OpenAI SDK; `linked_events` / `linked_pods` / `sections` stay from the template layer.
+Polishes `markdown` and `summary` via **OpenAI-compatible API** (DashScope / 百炼), aligned with the official Model Studio sample. Default model **`qwen3.6-plus`**, China endpoint **`https://dashscope.aliyuncs.com/compatible-mode/v1`**. **`qwen3.6-flash`** still works via `SENTINEL_LLM_MODEL`. Rule diagnosis runs first; LLM may reference `issues` / `recommended_actions` in prose only. **`enable_thinking` is off by default** so JSON narrative stays stable.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `SENTINEL_LLM_ENABLED` | `0` | Set `1` with `OPENAI_API_KEY` to enable |
-| `OPENAI_API_KEY` | — | API key (or compatible gateway with `OPENAI_BASE_URL`) |
-| `SENTINEL_LLM_MODEL` | `gpt-4o-mini` | Model name |
-| `SENTINEL_LLM_TIMEOUT_SEC` | `30` | Request timeout |
+| `SENTINEL_LLM_ENABLED` | `0` | Set `1` with API key to enable |
+| `DASHSCOPE_API_KEY` | — | Preferred for Qwen (or `OPENAI_API_KEY`) |
+| `OPENAI_BASE_URL` | China compatible URL | Intl: `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` |
+| `SENTINEL_LLM_MODEL` | `qwen3.6-plus` | Model id |
+| `SENTINEL_LLM_ENABLE_THINKING` | `0` | `1` = stream + thinking (not for production narrative) |
+| `SENTINEL_LLM_TIMEOUT_SEC` | `60` | HTTP timeout |
 
-On API failure or missing key, reports fall back to phase A template (`narrative_source=template`).
+Pipeline: `gather → template → diagnose → LLM polish (optional) → execute`. LangGraph: `gather → diagnose → narrate` so `narrate` sees `payload.diagnosis`.
 
 ```python
-report = build_inspection_report(
+from agent import build_inspection_with_diagnosis, llm_narrative_config
+
+print(llm_narrative_config())
+narrative, diagnosis, execution = build_inspection_with_diagnosis(
     payload,
     cluster_id="dev-cluster",
     namespace="default",
-    pod_name="shared-pod",
+    pod_name="crash-pod",
     use_llm=True,
 )
-print(report["narrative_source"])  # "llm" or "template"
+print(narrative["narrative_source"])  # "llm" or "template"
+print(narrative.get("llm_error"))
 ```
 
-LangGraph: set `payload.inspect.use_llm` to `true` for the `narrate` node.
+`payload.inspect.use_llm` or `payload.inspect.llm` = `true`. On API failure: `narrative_source=template`, `llm_error` set.
 
 ```powershell
+$env:SENTINEL_LLM_ENABLED = "1"
+$env:DASHSCOPE_API_KEY = "sk-..."
+$env:OPENAI_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+python scripts\qwen_dashscope_smoke.py
+python scripts\qwen_dashscope_smoke.py --thinking
 python -m unittest tests.test_agent_narrative_llm -v
+python scripts\llm_narrative_demo.py
+python scripts\diagnose_narrative_demo.py --pod-name crash-pod --llm
 python scripts\inspect_narrative_demo.py --llm
 ```
 
@@ -335,6 +352,82 @@ python scripts\inspect_narrative_demo.py --tenant-id team-alpha --cluster-id pro
 ```
 
 Fixture: `tenant_acl_matrix_batch()` — four cells (alpha/beta × dev/prod) in one payload.
+
+## LangGraph dev 接入清单
+
+``LANGGRAPH_RUN_LIVE=1`` means the **local** ``langgraph dev`` HTTP API (``agents/langgraph-server``), not LangGraph Cloud unless you point ``LANGGRAPH_API_URL`` at cloud and set ``LANGGRAPH_API_KEY``.
+
+| Step | Command / check |
+|------|-----------------|
+| 1. Start server | ``cd agents/langgraph-server`` → ``langgraph dev`` (note port, usually 2024). **Windows:** keep ``.env`` ASCII-only (UTF-8 Chinese comments break ``python-dotenv`` under GBK). |
+| 2. Env | ``LANGGRAPH_API_URL=http://127.0.0.1:2024`` ``LANGGRAPH_RUN_LIVE=1`` |
+| 3. Verify | ``python scripts/langgraph_live_verify.py`` (connectivity, graph ``sentinel``, thread create, inspect) |
+| 4. Inspect demo | ``python scripts/inspect_langgraph_live_demo.py --pod-name crash-pod`` |
+
+**Thread IDs:** ``langgraph_thread_id()`` returns a valid UUID (UUID5 from ``tenant:cluster``). The SDK also requires the thread to **exist** on the server — ``stream_sentinel_run`` calls ``ensure_langgraph_thread()`` (``threads.create`` when missing). Logical key for logs: ``sync_thread_id()``.
+
+**Errors:** ``badly formed hexadecimal UUID`` → use ``langgraph_thread_id`` / ``resolve_langgraph_thread_id``, not ``default:dev-cluster`` directly. ``Thread or assistant not found`` → run verify script; ensure ``langgraph dev`` is up and graph ``sentinel`` is in ``langgraph.json``.
+
+## Agent phase F: diagnosis + action registry (LangGraph E2E)
+
+**Inspect E2E** on LangGraph dev: sync/query optional; pass mock graph + ``payload.inspect`` in one run.
+
+| Piece | Role |
+|-------|------|
+| [`get_inspect_outputs_from_stream`](src/clients/langgraph_client.py) | Read ``gather`` / ``narrative`` / ``diagnosis`` / ``execution`` from stream |
+| [`agent/actions/`](src/agent/actions/) | ``ActionHandler`` registry; built-ins simulated; unknown → ``skipped`` |
+| [`execute.py`](src/agent/execute.py) | ``execution_source=registry_v1``; tenant ACL at execute via ``validate_execution_policy`` |
+
+```powershell
+$env:LANGGRAPH_API_URL = "http://127.0.0.1:2024"
+$env:LANGGRAPH_RUN_LIVE = "1"
+python scripts\langgraph_live_verify.py
+python scripts\inspect_langgraph_live_demo.py --pod-name crash-pod
+python scripts\full_pipeline_demo.py --live --inspect
+python -m unittest tests.test_langgraph_inspect_live tests.test_agent_diagnose -v
+```
+
+Live K8s writes remain **off** unless ``SENTINEL_EXECUTE_LIVE=1`` and handlers are wired (phase 4-0b / Action MCP).
+
+## Agent phase D/E: diagnosis + execute stub
+
+Rule engine over gather facts (same queries as narrative); **no live K8s/MCP write APIs**.
+
+| Rule signal | Issue | Action |
+|-------------|-------|--------|
+| `CrashLoopBackOff` / `BackOff` event | `CrashLoop` | `restart_pod` |
+| `FailedScheduling` | `SchedulingFailure` | `check_node_capacity` |
+| OOM in event | `OOM` | `scale_up` |
+| Inspection not ok | `InspectionFailed` | `run_inspection` |
+| Warning events only | `WarningEvents` | `review_events` |
+
+Omitting `tenant_id` keeps third-edition gather/query behavior; ACL still applies in gather when `tenant_id` is set.
+
+```python
+from agent import build_inspection_with_diagnosis
+
+narrative, diagnosis, execution = build_inspection_with_diagnosis(
+    payload,
+    cluster_id="dev-cluster",
+    namespace="default",
+    pod_name="crash-pod",
+    dry_run=True,
+)
+```
+
+`payload.inspect.dry_run` (default `true`) controls the LangGraph `execute` node. Live execution requires `SENTINEL_EXECUTE_LIVE=1` and is **not implemented** in this phase (`NotImplementedError` if `dry_run=false`).
+
+**Performance:** `gather_subgraph` parses the graph once and runs all pod-scoped queries on the same `GraphView`. Pass a pre-built `gather` into `build_inspection_report` / `build_inspection_with_diagnosis` after the LangGraph `gather` node to avoid a second scan.
+
+**Errors:** `on_error="mark"` returns `ok=False` and `error` / `error_stage` on narrative/diagnosis/execution instead of raising. Default remains `on_error="raise"`.
+
+**LLM latency:** `SENTINEL_LLM_TIMEOUT_SEC` (default 60) applies to the HTTP client; failures/timeouts fall back to template (`llm_error` set when polish fails).
+
+```powershell
+python -m unittest tests.test_agent_diagnose -v
+python scripts\diagnose_narrative_demo.py --cluster-id dev-cluster --pod-name crash-pod
+python scripts\diagnose_narrative_demo.py --tenant-id team-alpha --cluster-id dev-cluster --matrix
+```
 
 ## Multicluster acceptance (mock)
 

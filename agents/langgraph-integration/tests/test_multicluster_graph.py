@@ -15,7 +15,7 @@ from adapter.inspections import inspection_mcp_to_batch, inspections_to_batch
 from adapter.k8s import pods_events_to_batch
 from models.entities import EntityType, RelationType
 from models.ids import inspection_id, node_id, pod_id
-from models.scope import sync_thread_id
+from models.scope import langgraph_thread_id
 from testing.multicluster_fixtures import (
     CLUSTER_DEV,
     CLUSTER_PROD,
@@ -164,7 +164,7 @@ class TestFullPipelineSyncThreads(unittest.TestCase):
                 )
         self.assertEqual(
             captured,
-            [sync_thread_id(CLUSTER_DEV), sync_thread_id(CLUSTER_PROD)],
+            [langgraph_thread_id(CLUSTER_DEV), langgraph_thread_id(CLUSTER_PROD)],
         )
 
 

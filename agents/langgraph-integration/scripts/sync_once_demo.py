@@ -13,7 +13,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from models.scope import sync_thread_id  # noqa: E402
+from models.scope import langgraph_thread_id, sync_thread_id  # noqa: E402
 from sync import sync_pods_and_events_resilient  # noqa: E402
 
 
@@ -40,9 +40,12 @@ def main() -> int:
         events_payload,
         "default",
         cluster_id=CLUSTER_LOCAL,
-        thread_id=sync_thread_id(CLUSTER_LOCAL),
+        thread_id=langgraph_thread_id(CLUSTER_LOCAL),
     )
-    print(f"thread_id={sync_thread_id(CLUSTER_LOCAL)}")
+    print(
+        f"thread_id={langgraph_thread_id(CLUSTER_LOCAL)} "
+        f"(logical={sync_thread_id(CLUSTER_LOCAL)})"
+    )
     print(
         "sync ok:",
         f"chunks={result.chunks_sent}",

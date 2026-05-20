@@ -11,7 +11,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from models.scope import sync_thread_id
+from models.scope import langgraph_thread_id, sync_thread_id
 from testing.multicluster_fixtures import CLUSTER_DEV, CLUSTER_LOCAL, CLUSTER_PROD
 from sync.multicluster import make_mock_cluster_sync, sync_clusters_resilient
 from sync.pipeline import sync_pods_and_events_resilient
@@ -96,7 +96,7 @@ class TestSyncResilientScope(unittest.TestCase):
 
         pods = pods_mcp(CLUSTER_DEV)
         events = events_mcp(CLUSTER_DEV)
-        expected_thread = sync_thread_id(CLUSTER_DEV)
+        expected_thread = langgraph_thread_id(CLUSTER_DEV)
         with mock.patch("sync.pipeline.stream_sentinel_run", return_value=iter([])) as m:
             sync_pods_and_events_resilient(
                 pods,
@@ -123,7 +123,7 @@ class TestSyncResilientScope(unittest.TestCase):
             )
         self.assertEqual(
             m.call_args.kwargs.get("thread_id"),
-            sync_thread_id(CLUSTER_DEV, "team-alpha"),
+            langgraph_thread_id(CLUSTER_DEV, "team-alpha"),
         )
 
 
@@ -144,8 +144,8 @@ class TestMulticlusterSyncTick(unittest.TestCase):
         self.assertEqual(len(result.by_cluster), 2)
         self.assertEqual(result.by_cluster[CLUSTER_DEV].entities_pushed, 2)
         self.assertEqual(result.by_cluster[CLUSTER_PROD].entities_pushed, 2)
-        self.assertIn(sync_thread_id(CLUSTER_DEV), captured_threads)
-        self.assertIn(sync_thread_id(CLUSTER_PROD), captured_threads)
+        self.assertIn(langgraph_thread_id(CLUSTER_DEV), captured_threads)
+        self.assertIn(langgraph_thread_id(CLUSTER_PROD), captured_threads)
 
 
 if __name__ == "__main__":

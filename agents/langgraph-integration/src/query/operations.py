@@ -371,4 +371,32 @@ def _inspections_for_pod(
     }
 
 
-__all__ = ["QueryError", "TenantAccessError", "run_query"]
+def run_pod_scope_queries(
+    source: dict[str, Any] | GraphView,
+    *,
+    cluster_id: str,
+    namespace: str,
+    name: str,
+    tenant_id: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Run pod_status / events_for_pod / inspections_for_pod on one ``GraphView``."""
+    view = source if isinstance(source, GraphView) else GraphView.from_payload(source)
+    cid = _require_cluster_id(cluster_id)
+    _acl_cluster(tenant_id, cid)
+    ns = str(namespace).strip()
+    pname = str(name).strip()
+    return {
+        "pod_status": _pod_status(view, cid, ns, pname, tenant_id=tenant_id),
+        "events_for_pod": _events_for_pod(view, cid, ns, pname, tenant_id=tenant_id),
+        "inspections_for_pod": _inspections_for_pod(
+            view, cid, ns, pname, tenant_id=tenant_id
+        ),
+    }
+
+
+__all__ = [
+    "QueryError",
+    "TenantAccessError",
+    "run_query",
+    "run_pod_scope_queries",
+]

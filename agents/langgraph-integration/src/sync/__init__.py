@@ -1,4 +1,4 @@
-from models.scope import sync_thread_id
+from models.scope import langgraph_thread_id, resolve_langgraph_thread_id, sync_thread_id
 from sync.multicluster import (
     MulticlusterSyncResult,
     make_mock_cluster_sync,
@@ -29,6 +29,8 @@ __all__ = [
     "SyncState",
     "SyncStateRegistry",
     "sync_thread_id",
+    "langgraph_thread_id",
+    "resolve_langgraph_thread_id",
     "sync_state_partition_key",
     "partition_state_path",
     "entity_fingerprint",

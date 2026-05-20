@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections import Counter
 from pathlib import Path
@@ -12,7 +13,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from agent import build_inspection_report, llm_enabled  # noqa: E402
+from agent import build_inspection_report, llm_enabled, llm_narrative_config  # noqa: E402
 from config.tenant_registry import TenantAccessError  # noqa: E402
 from testing.multicluster_fixtures import (  # noqa: E402
     CLUSTER_DEV,
@@ -42,7 +43,7 @@ def main() -> int:
     parser.add_argument(
         "--llm",
         action="store_true",
-        help="Enable OpenAI polish (requires SENTINEL_LLM_ENABLED=1 and OPENAI_API_KEY)",
+        help="Enable LLM polish (Qwen; SENTINEL_LLM_ENABLED=1 + DASHSCOPE_API_KEY)",
     )
     parser.add_argument(
         "--tenant-id",
@@ -55,6 +56,9 @@ def main() -> int:
         help="Single cluster for --tenant-id mode (default: dev-cluster)",
     )
     args = parser.parse_args()
+
+    print("=== LLM config ===")
+    print(json.dumps(llm_narrative_config(), indent=2, ensure_ascii=False))
 
     if args.llm and not llm_enabled():
         print(

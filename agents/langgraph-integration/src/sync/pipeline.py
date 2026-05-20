@@ -17,7 +17,7 @@ from adapter.types import McpListResponse
 from clients.langgraph_client import stream_sentinel_run
 from langgraph_sdk.client import SyncLangGraphClient
 from models.entities import GraphBatch
-from models.scope import resolve_cluster_id, sync_thread_id
+from models.scope import resolve_cluster_id, resolve_langgraph_thread_id
 from sync.retry import retry_call
 from sync.state import SyncState, SyncStateRegistry
 from utils.batching import chunk_graph_batch
@@ -68,7 +68,11 @@ def _resolve_sync_scope(
     """Resolve cluster, tenant, LangGraph thread, and partitioned ``SyncState``."""
     cid = resolve_cluster_id(*mcps, cluster_id=cluster_id)
     tid = tenant_id.strip() if tenant_id and str(tenant_id).strip() else None
-    thread = thread_id if thread_id else sync_thread_id(cid, tid)
+    thread = resolve_langgraph_thread_id(
+        thread_id=thread_id,
+        cluster_id=cid,
+        tenant_id=tid,
+    )
     if state is not None:
         sync_state = state
     else:

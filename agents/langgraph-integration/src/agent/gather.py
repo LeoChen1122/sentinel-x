@@ -8,7 +8,7 @@ from agent.types import GatherResult, InspectRequest
 from config.tenant_registry import assert_tenant_cluster_access
 from models.ids import pod_id
 from query.graph_view import GraphView
-from query.operations import run_query
+from query.operations import run_pod_scope_queries
 
 
 def _props_cluster(props: dict[str, Any]) -> str:
@@ -26,13 +26,12 @@ def _active_tenant_id(tenant_id: str | None) -> str | None:
     return tid if tid else None
 
 
-def _filter_subgraph(
-    payload: dict[str, Any],
+def _subgraph_from_view(
+    view: GraphView,
     cluster_id: str,
     tenant_id: str | None = None,
 ) -> dict[str, Any]:
-    """Entities/edges scoped by cluster; optionally by ``properties.tenant_id``."""
-    view = GraphView.from_payload(payload)
+    """Filter entities/edges from an existing view (no second payload parse)."""
     cid = cluster_id.strip()
     tid = _active_tenant_id(tenant_id)
     kept_entities = [
@@ -59,7 +58,11 @@ def gather_subgraph(
     pod_name: str,
     tenant_id: str | None = None,
 ) -> GatherResult:
-    """Build ``GatherResult`` from full graph payload and scoped queries."""
+    """Build ``GatherResult`` from full graph payload and scoped queries.
+
+    Parses the payload into a single ``GraphView`` and reuses it for subgraph
+    filtering and all pod-scoped queries (avoids repeated full-graph scans).
+    """
     cid = cluster_id.strip()
     ns = namespace.strip()
     pname = pod_name.strip()
@@ -67,21 +70,16 @@ def gather_subgraph(
     if tid is not None:
         assert_tenant_cluster_access(tid, cid)
     pid = pod_id(cid, ns, pname)
-    subgraph = _filter_subgraph(payload, cid, tenant_id=tid)
-    query_kw: dict[str, Any] = {
-        "cluster_id": cid,
-        "namespace": ns,
-        "name": pname,
-    }
-    if tid is not None:
-        query_kw["tenant_id"] = tid
-    queries = {
-        "pod_status": run_query(payload, "pod_status", **query_kw),
-        "events_for_pod": run_query(payload, "events_for_pod", **query_kw),
-        "inspections_for_pod": run_query(
-            payload, "inspections_for_pod", **query_kw
-        ),
-    }
+
+    view = GraphView.from_payload(payload)
+    subgraph = _subgraph_from_view(view, cid, tenant_id=tid)
+    queries = run_pod_scope_queries(
+        view,
+        cluster_id=cid,
+        namespace=ns,
+        name=pname,
+        tenant_id=tid,
+    )
     return GatherResult(
         cluster_id=cid,
         namespace=ns,
@@ -110,10 +108,16 @@ def parse_inspect_request(payload: dict[str, Any]) -> InspectRequest | None:
     tid = raw.get("tenant_id")
     if tid is not None and str(tid).strip():
         req["tenant_id"] = str(tid).strip()
-    if "use_llm" in raw:
-        val = raw["use_llm"]
-        if isinstance(val, bool):
-            req["use_llm"] = val
+    use_llm_raw = raw.get("use_llm", raw.get("llm"))
+    if use_llm_raw is not None:
+        if isinstance(use_llm_raw, bool):
+            req["use_llm"] = use_llm_raw
         else:
-            req["use_llm"] = str(val).strip().lower() in ("1", "true", "yes")
+            req["use_llm"] = str(use_llm_raw).strip().lower() in ("1", "true", "yes")
+    if "dry_run" in raw:
+        val = raw["dry_run"]
+        if isinstance(val, bool):
+            req["dry_run"] = val
+        else:
+            req["dry_run"] = str(val).strip().lower() not in ("0", "false", "no")
     return req

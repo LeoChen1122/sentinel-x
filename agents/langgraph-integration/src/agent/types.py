@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import Any, Literal, TypedDict
+
+OnErrorMode = Literal["raise", "mark"]
 
 
 class LinkedEntity(TypedDict, total=False):
@@ -28,6 +30,7 @@ class InspectRequest(TypedDict, total=False):
     pod_name: str
     tenant_id: str | None
     use_llm: bool | None
+    dry_run: bool | None
 
 
 class GatherResult(TypedDict):
@@ -55,3 +58,55 @@ class InspectionReport(TypedDict, total=False):
     linked_inspections: list[LinkedEntity]
     summary: str
     narrative_source: str
+    ok: bool
+    error: str | None
+    error_stage: str | None
+    llm_error: str | None
+
+
+class ActionContext(TypedDict):
+    """Scope passed to action handlers (cluster, pod, tenant)."""
+
+    cluster_id: str
+    namespace: str
+    pod_name: str
+    pod_id: str
+    tenant_id: str | None
+
+
+class ActionRecord(TypedDict, total=False):
+    """One simulated or executed action from the action layer."""
+
+    action: str
+    target: str
+    status: str
+    message: str
+
+
+class DiagnosisReport(TypedDict, total=False):
+    """Rule-based diagnosis (``payload.diagnosis``)."""
+
+    cluster_id: str
+    namespace: str
+    pod_name: str
+    pod_id: str
+    tenant_id: str | None
+    issues: list[str]
+    recommended_actions: list[str]
+    severity: str
+    diagnosis_source: str
+    ok: bool
+    error: str | None
+    error_stage: str | None
+
+
+class ExecutionResult(TypedDict, total=False):
+    """Action layer output (``payload.execution``)."""
+
+    dry_run: bool
+    actions_taken: list[ActionRecord]
+    skipped: list[str]
+    ok: bool
+    error: str | None
+    error_stage: str | None
+    execution_source: str

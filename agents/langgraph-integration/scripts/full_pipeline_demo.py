@@ -7,13 +7,14 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from models.scope import sync_thread_id  # noqa: E402
+from models.scope import resolve_langgraph_thread_id  # noqa: E402
 from query import format_query_result, run_query  # noqa: E402
 from sync.multicluster import make_mock_cluster_sync, sync_clusters_resilient  # noqa: E402
 from testing.multicluster_fixtures import (  # noqa: E402
@@ -56,7 +57,38 @@ def _print_multicluster_mock() -> None:
         )
 
 
-def _live_demo(cluster_id: str, thread_id: str | None, tenant_id: str | None) -> None:
+def _run_inspect_on_thread(
+    client: Any,
+    thread_id: str,
+    cluster_id: str,
+    *,
+    pod_name: str = "crash-pod",
+) -> None:
+    from clients.langgraph_client import get_inspect_outputs_from_stream, stream_sentinel_run
+    from testing.multicluster_fixtures import dual_cluster_rich_batch
+
+    payload = dual_cluster_rich_batch().to_dict(wire_only=True)
+    payload["inspect"] = {
+        "cluster_id": cluster_id,
+        "namespace": "default",
+        "pod_name": pod_name,
+        "dry_run": True,
+    }
+    chunks = list(stream_sentinel_run(payload, client=client, thread_id=thread_id))
+    outputs = get_inspect_outputs_from_stream(chunks)
+    print("=== inspect (live) ===")
+    print(f"issues={outputs.get('diagnosis', {}).get('issues')}")
+    print(f"execution_source={outputs.get('execution', {}).get('execution_source')}")
+    print(f"narrative_source={outputs.get('narrative', {}).get('narrative_source')}")
+
+
+def _live_demo(
+    cluster_id: str,
+    thread_id: str | None,
+    tenant_id: str | None,
+    *,
+    run_inspect: bool = False,
+) -> None:
     from clients.langgraph_client import get_langgraph_client, query_sentinel
     from sync import sync_pods_events_inspections_resilient
     from testing.multicluster_fixtures import (
@@ -67,7 +99,11 @@ def _live_demo(cluster_id: str, thread_id: str | None, tenant_id: str | None) ->
 
     client = get_langgraph_client()
     ns = "default"
-    tid = thread_id or sync_thread_id(cluster_id, tenant_id)
+    tid = resolve_langgraph_thread_id(
+        thread_id=thread_id,
+        cluster_id=cluster_id,
+        tenant_id=tenant_id,
+    )
     sync_pods_events_inspections_resilient(
         pods_mcp(cluster_id, namespace=ns),
         events_mcp(cluster_id, namespace=ns),
@@ -90,6 +126,9 @@ def _live_demo(cluster_id: str, thread_id: str | None, tenant_id: str | None) ->
         print(f"=== {op} (live) ===")
         print(format_query_result(out), end="")
 
+    if run_inspect:
+        _run_inspect_on_thread(client, tid, cluster_id)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -101,6 +140,11 @@ def main() -> int:
         help="LangGraph thread (default: {tenant}:{cluster_id})",
     )
     parser.add_argument("--tenant-id", default=None)
+    parser.add_argument(
+        "--inspect",
+        action="store_true",
+        help="After sync/query, run inspect → diagnose → execute on thread",
+    )
     args = parser.parse_args()
 
     if args.live:
@@ -111,7 +155,12 @@ def main() -> int:
         ):
             print("Set LANGGRAPH_RUN_LIVE=1", file=sys.stderr)
             return 1
-        _live_demo(args.cluster_id, args.thread_id, args.tenant_id)
+        _live_demo(
+            args.cluster_id,
+            args.thread_id,
+            args.tenant_id,
+            run_inspect=args.inspect,
+        )
         return 0
 
     _print_multicluster_mock()

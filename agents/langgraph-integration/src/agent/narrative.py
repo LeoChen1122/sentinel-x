@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent.types import GatherResult, InspectionReport, LinkedEntity, ReportSection
+from agent.types import DiagnosisReport, GatherResult, InspectionReport, LinkedEntity, ReportSection
 from models.entities import EntityType
 
 
@@ -165,6 +165,10 @@ def build_report_template(gather: GatherResult) -> InspectionReport:
         linked_inspections=linked_inspections,
         summary=summary,
         narrative_source="template",
+        ok=True,
+        error=None,
+        error_stage=None,
+        llm_error=None,
     )
 
 
@@ -172,26 +176,32 @@ def build_report(
     gather: GatherResult,
     *,
     use_llm: bool | None = None,
+    diagnosis: DiagnosisReport | None = None,
 ) -> InspectionReport:
-    """Template report; optionally polish ``markdown``/``summary`` with OpenAI."""
-    from agent.llm import llm_enabled, polish_inspection_report
+    """Template report; optionally polish with LLM (Qwen via DashScope compatible API)."""
+    from agent.llm import polish_inspection_report, resolve_use_llm
 
     base = build_report_template(gather)
-    if use_llm is False:
+    if not resolve_use_llm(use_llm):
         return base
-    if use_llm is True:
-        if llm_enabled():
-            return polish_inspection_report(base, gather)
-        return base
-    if llm_enabled():
-        return polish_inspection_report(base, gather)
-    return base
+    return polish_inspection_report(base, gather, diagnosis=diagnosis)
 
 
 def build_report_from_gather_dict(
     gather: dict[str, Any],
     *,
     use_llm: bool | None = None,
+    diagnosis: dict[str, Any] | DiagnosisReport | None = None,
 ) -> InspectionReport:
-    """Accept wire ``payload.gather`` dict."""
-    return build_report(GatherResult(**gather), use_llm=use_llm)
+    """Accept wire ``payload.gather`` / optional ``payload.diagnosis`` dict."""
+    diag: DiagnosisReport | None = None
+    if diagnosis is not None:
+        if isinstance(diagnosis, dict):
+            diag = DiagnosisReport(**diagnosis)
+        else:
+            diag = diagnosis
+    return build_report(
+        GatherResult(**gather),
+        use_llm=use_llm,
+        diagnosis=diag,
+    )

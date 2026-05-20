@@ -10,7 +10,7 @@ _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
-from agent import build_inspection_report, gather_subgraph
+from agent import InspectPipelineError, build_inspection_report, gather_subgraph
 from config.tenant_registry import TenantAccessError
 from testing.multicluster_fixtures import (
     CLUSTER_DEV,
@@ -44,7 +44,7 @@ class TestAgentTenantNarrative(unittest.TestCase):
         self.assertIn(CLUSTER_DEV, report["summary"])
 
     def test_inspect_alpha_prod_raises(self) -> None:
-        with self.assertRaises(TenantAccessError):
+        with self.assertRaises(InspectPipelineError) as ctx:
             build_inspection_report(
                 self.matrix,
                 cluster_id=CLUSTER_PROD,
@@ -53,6 +53,7 @@ class TestAgentTenantNarrative(unittest.TestCase):
                 tenant_id=TENANT_ALPHA,
                 use_llm=False,
             )
+        self.assertIsInstance(ctx.exception.cause, TenantAccessError)
 
     def test_inspect_beta_prod_ok(self) -> None:
         report = build_inspection_report(
