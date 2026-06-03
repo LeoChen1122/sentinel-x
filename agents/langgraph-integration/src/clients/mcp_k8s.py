@@ -52,7 +52,7 @@ def fetch_k8s_mcp_via_docker(
         raise ValueError("namespace required")
 
     proc = subprocess.run(
-        [
+       [
             docker_bin,
             "exec",
             "-i",
@@ -61,8 +61,9 @@ def fetch_k8s_mcp_via_docker(
             name,
             "bash",
             "-lc",
-            "cd /app/src && python -c " + json.dumps(_DOCKER_FETCH_SCRIPT),
+            "cd /app/src && python -",
         ],
+        input=_DOCKER_FETCH_SCRIPT,
         capture_output=True,
         text=True,
         check=False,

@@ -1,0 +1,34 @@
+[Unit]
+Description=Sentinel-X LangGraph dev API (sentinel graph)
+Documentation=file:/opt/sentinel-x/docs/DEPLOY-LANGGRAPH-SYSTEMD.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/sentinel-x/agents/langgraph-server
+
+# Main env: LLM keys, LangSmith, etc. (ASCII-only lines)
+EnvironmentFile=-/opt/sentinel-x/agents/langgraph-server/.env
+
+Environment=PATH=/opt/sentinel-x/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+Environment=LANGGRAPH_API_URL=http://127.0.0.1:2024
+
+# langgraph dev in-memory API (Phase 1b); bind localhost only
+ExecStart=/opt/sentinel-x/.venv/bin/langgraph dev --host 127.0.0.1 --port 2024 --no-browser
+
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+# langgraph-integration is imported via graph.py sys.path
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentinel-langgraph
+
+[Install]
+WantedBy=multi-user.target

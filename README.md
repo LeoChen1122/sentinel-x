@@ -139,6 +139,8 @@ If workload continues to grow, consider HPA or memory optimization.
 
 ## 🎯 开发计划 (MVP)
 
+详细进度、按周优先级与周总结索引见 **[docs/ROADMAP.md](docs/ROADMAP.md)**。
+
 | 阶段    | 目标                              |
 | ------- | --------------------------------- |
 | Phase 0 | 项目底座，定义目录结构、Skill模板 |
