@@ -13,7 +13,8 @@ from typing import Any, Iterator
 
 from adapter.inspections import inspection_mcp_to_batch
 from adapter.k8s import pods_events_to_batch
-from adapter.types import McpListResponse
+from adapter.metrics import pods_with_metrics_to_batch
+from adapter.types import McpListResponse, McpPromQueryResponse
 from clients.langgraph_client import stream_sentinel_run
 from langgraph_sdk.client import SyncLangGraphClient
 from models.entities import GraphBatch
@@ -272,6 +273,50 @@ def sync_inspections_resilient(
         tenant_id=tid,
         link_pods=link_pods,
         link_nodes=link_nodes,
+    )
+    return push_graph_batch_resilient(
+        batch,
+        client=client,
+        state=sync_state,
+        wire_only=wire_only,
+        thread_id=thread,
+        **push_kwargs,
+    )
+
+
+def sync_pod_metrics_resilient(
+    pods_mcp: McpListResponse,
+    cpu_mcp: McpPromQueryResponse,
+    memory_mcp: McpPromQueryResponse,
+    namespace: str,
+    *,
+    cluster_id: str | None = None,
+    tenant_id: str | None = None,
+    client: SyncLangGraphClient | None = None,
+    state: SyncState | None = None,
+    state_registry: SyncStateRegistry | None = None,
+    wire_only: bool = True,
+    thread_id: str | None = None,
+    **push_kwargs: Any,
+) -> SyncPushResult:
+    """Prometheus metrics enrichment: K8s pods + Prom vectors → resilient push."""
+    cid, tid, thread, sync_state = _resolve_sync_scope(
+        pods_mcp,
+        cpu_mcp,
+        memory_mcp,
+        cluster_id=cluster_id,
+        tenant_id=tenant_id,
+        thread_id=thread_id,
+        state=state,
+        state_registry=state_registry,
+    )
+    batch = pods_with_metrics_to_batch(
+        pods_mcp,
+        cpu_mcp,
+        memory_mcp,
+        namespace,
+        cluster_id=cid,
+        tenant_id=tid,
     )
     return push_graph_batch_resilient(
         batch,

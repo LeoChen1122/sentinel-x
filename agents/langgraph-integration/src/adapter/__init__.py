@@ -12,6 +12,7 @@ from adapter.inspections import (
     inspections_to_entities,
 )
 from adapter.k8s import pods_events_to_batch
+from adapter.metrics import metrics_map_from_prom, pods_with_metrics_to_batch
 from adapter.pods import (
     pods_mcp_to_batch,
     pods_to_entities,
@@ -30,4 +31,6 @@ __all__ = [
     "inspections_to_batch",
     "inspection_mcp_to_batch",
     "pods_events_to_batch",
+    "pods_with_metrics_to_batch",
+    "metrics_map_from_prom",
 ]

@@ -1,90 +1,109 @@
 # Sentinel-X
 
 **Cloud-Native Self-Healing Engine with MCP & Micro-Sandbox**
-（基于MCP与微沙箱的云原生自愈引擎）
+（基于 MCP 与微沙箱的云原生自愈引擎）
 
-![架构动图示意](https://chatgpt.com/c/docs/architecture.gif)
+> Sentinel-X 是一个开源的云原生自愈 Agent 框架，结合 **MCP 协议标准化工具对接** 与 **微沙箱安全预演**，实现智能运维闭环（**查 / 判 / 试 / 记**）。
 
-> Sentinel-X 是一个开源的云原生自愈Agent框架，结合了 **MCP协议标准化工具对接** 和 **微沙箱安全预演**，实现智能运维闭环。
+---
 
-------
+## Implementation status
 
-## ⭐ 特性亮点
+| Area | Status | Location |
+|------|--------|----------|
+| K8s / Prom MCP | **Live** | `mcp-servers/` |
+| LangGraph graph + sync/query | **Live** | `agents/langgraph-integration/`, `agents/langgraph-server/` |
+| Deploy scripts + runbooks | **Live** | `deploy/`, `docs/DEPLOY-*.md` |
+| Streamlit UI (W4) | **Minimal** | `apps/ui/` |
+| Inspect / diagnose E2E | **Live (dry-run)** | `scripts/inspect_langgraph_live_demo.py` |
+| Prom metrics in graph (W3) | **Live** | `mcp_prom_sync_live.py`, `top_pods_by_cpu` |
+| FastAPI `apps/api` | Planned (W7) | — |
+| Root `docker-compose.yml` | Planned | — |
+| `sandbox/` pre-run | Planned (W6) | — |
+| `skills/` storage | Planned (W5) | — |
 
-1. **智能故障闭环**
-   - 告警接收 → Agent诊断 → Skills检索 → 修复计划生成 → 沙箱验证 → 生产执行 → 自动复盘
-   - 核心能力概括：**查 / 判 / 试 / 记**
-2. **安全微沙箱**
-   - 高风险操作先在 Firecracker 或 Docker 微沙箱中预演
-   - 防止 LLM 命令幻觉造成 P0级事故
-   - 沙箱执行结果可回传，形成完整审计
-3. **标准化工具接入**
-   - 基于 **MCP协议**，支持 Prometheus、K8s、Loki 等
-   - Agent通过统一接口调用工具，无需直接操作底层资源
-4. **多Agent协同**
-   - “指挥官-执行者”架构
-   - 并行处理复杂故障，提高自动修复效率
-5. **经验沉淀**
-   - 成功修复方案生成 Markdown Skill
-   - 支持向量检索和标签检索，历史经验可复用
+详细周计划与进度：**[docs/ROADMAP.md](docs/ROADMAP.md)**
 
-------
+---
 
-## 🛠 技术栈
+## Directory structure (actual)
 
-| 模块       | 技术选型                                |
-| ---------- | --------------------------------------- |
-| Agent框架  | LangGraph (Python)                      |
-| 协议标准   | MCP SDK                                 |
-| 沙箱技术   | Firecracker / gVisor / Docker-in-Docker |
-| 后端服务   | FastAPI                                 |
-| 前端UI     | Streamlit                               |
-| Skills存储 | Markdown + ChromaDB                     |
-| 监控数据源 | Prometheus + Loki                       |
-| K8s操作    | Kubernetes Python Client / MCP-K8s      |
-| 模型支持   | Qwen2.5-Coder / Claude / GPT            |
-
-------
-
-## 📂 目录结构
-
-```bash
+```text
 sentinel-x/
-├── apps/
-│   ├── api/                  # FastAPI 后端
-│   └── ui/                   # Streamlit 前端
 ├── agents/
-│   ├── graph.py              # LangGraph主流程
-│   ├── nodes/                # 流程节点
-│   └── prompts/              # LLM prompts
-├── mcp-servers/              # MCP适配器
-├── sandbox/                  # 微沙箱执行
-├── skills/                   # 经验库 (Markdown)
-├── storage/                  # 向量索引与审计
-├── configs/                  # 配置文件
-├── tests/                    # 单元/集成测试
-└── docker-compose.yml        # 一键部署
+│   ├── langgraph-integration/   # Adapter, sync, query, MCP clients, agent logic
+│   └── langgraph-server/        # LangGraph dev graph (ingest → … → query)
+├── apps/
+│   └── ui/                      # Streamlit minimal UI (W4)
+├── mcp-servers/                 # K8s + Prometheus MCP (docker-compose)
+├── deploy/                      # systemd, cron, sync shell templates
+├── docs/                        # ROADMAP, DEPLOY-*, weekly notes
+└── dist/                        # Offline helm bundles (kube-prometheus)
 ```
 
-------
+**Planned (not in repo yet):** `apps/api/`, `sandbox/`, `skills/`, root `docker-compose.yml`, top-level `configs/`.
 
-## ⚡ 快速开始
+---
+
+## Quick start — production server
+
+**New server (P0):** one-command install → **[docs/DEPLOY-ONE-SHOT.md](docs/DEPLOY-ONE-SHOT.md)** (`sudo bash deploy/install-sentinel-x.sh`).
+
+Step-by-step index → **[docs/DEPLOY-SERVER.md](docs/DEPLOY-SERVER.md)**
+
+Ordered setup: k3s → MCP kubeconfig → LangGraph systemd → K8s cron sync → (optional) Prom → UI.
+
+**Live defaults** (production server):
+
+```text
+cluster_id   = k3s-prod
+namespace    = kube-system
+thread_id    = 5ad00ee0-6f4d-5cd6-a021-99469a86e4e1
+LANGGRAPH    = http://127.0.0.1:2024
+```
+
+---
+
+## Quick start — local dev (UI + LangGraph)
 
 ```bash
-# 克隆项目
-git clone https://github.com/yourname/sentinel-x.git
-cd sentinel-x
+git clone <repo> && cd sentinel-x
+python -m venv .venv && source .venv/bin/activate
+pip install -U "langgraph-cli[inmem]"
+pip install -r agents/langgraph-server/requirements.txt
+pip install -r agents/langgraph-integration/requirements.txt
+pip install -r apps/ui/requirements.txt
 
-# 启动演示环境
-docker-compose up
+# Terminal 1: LangGraph
+cd agents/langgraph-server && langgraph dev --host 127.0.0.1 --port 2024 --no-browser
+
+# Terminal 2: sync mock or point at server thread via SSH tunnel, then UI
+export LANGGRAPH_RUN_LIVE=1
+export LANGGRAPH_API_URL=http://127.0.0.1:2024
+streamlit run apps/ui/app.py
 ```
 
-- 打开浏览器访问 `http://localhost:8501` 查看 Streamlit UI
-- 模拟告警 → Agent 自动分析 → 沙箱验证 → 生产修复
+Integration tests: `python -m unittest discover -s agents/langgraph-integration/tests -v`  
+Graph smoke tests: `python -m pytest agents/langgraph-server/tests/ -v`
 
-------
+See also [agents/langgraph-integration/README.md](agents/langgraph-integration/README.md).
 
-## 📝 Skill 示例模板
+---
+
+## Features (target vs current)
+
+| Capability | Current |
+|------------|---------|
+| MCP query (Pod, Event, CPU/memory) | Live via LangGraph thread |
+| Rule-based diagnose + narrative | Live inspect (template; LLM optional) |
+| Simulated execute (restart_pod, etc.) | Dry-run only |
+| Sandbox pre-run | Not implemented |
+| Skills retrieval | Not implemented |
+| Streamlit dashboard | Minimal (pods / top CPU / inspect) |
+
+---
+
+## Skill template (planned W5)
 
 ```markdown
 ---
@@ -92,86 +111,36 @@ name: fix-pod-oom
 version: 1.0
 tags: [k8s, oom, memory, restart]
 symptom: Pod is terminated with exit code 137
-conditions:
-  - memory usage close to limit
-  - restart count increasing
 risk_level: medium
 ---
 
 # Problem
 Pod repeated restart due to OOMKilled.
 
-# Diagnosis Steps
-1. Check memory usage
-2. Inspect pod events
-3. Confirm container exit code
-
 # Resolution
 1. Increase memory limit
 2. Restart deployment
-3. Verify pod becomes Ready
-
-# Verification
-- Pod status: Ready
-- Restart count stable
-- Memory usage below threshold
-
-# Notes
-If workload continues to grow, consider HPA or memory optimization.
 ```
 
-------
+---
 
-## 🚀 功能演示
+## Security policy
 
-1. MCP基础查询：
-   - CPU/内存监控
-   - Pod状态和事件
-2. 故障诊断：
-   - OOMKilled, CrashLoopBackOff, CPU飙高等
-3. 沙箱预演：
-   - 安全执行修复命令
-   - 自动生成审计日志
-4. Skills沉淀：
-   - 下一次遇到类似故障可直接命中历史经验
+1. **Read-only mode** (default): metrics / events / graph query  
+2. **Sandbox mode** (planned): risky commands in isolated container  
+3. **Production execute** (planned): live K8s writes with approval  
 
-------
+Default deny: delete namespace, bulk cleanup, arbitrary shell, non-whitelisted kubectl.
 
-## 🎯 开发计划 (MVP)
+---
 
-详细进度、按周优先级与周总结索引见 **[docs/ROADMAP.md](docs/ROADMAP.md)**。
+## Related docs
 
-| 阶段    | 目标                              |
-| ------- | --------------------------------- |
-| Phase 0 | 项目底座，定义目录结构、Skill模板 |
-| Phase 1 | MCP基础设施接入，Agent可查询状态  |
-| Phase 2 | 故障诊断闭环                      |
-| Phase 3 | 沙箱预演与自愈                    |
-| Phase 4 | Skills沉淀与检索                  |
-| Phase 5 | 前端展示与完整演示                |
-
-------
-
-## 📌 高光亮点
-
-- 架构创新：多Agent协同 + MCP标准化工具接入
-- 安全突破：沙箱预演-生产执行双阶段机制
-- 效果量化：CPU飙升 & Pod CrashLoopBackOff自动识别与修复，平均修复时间缩短至45秒
-
-------
-
-## 📜 安全策略
-
-1. **只读模式**：指标/日志/事件查询
-2. **沙箱模式**：高风险命令模拟执行
-3. **生产模式**：真实执行操作，需审批或确认
-
-**默认禁止操作**：
-
-- 删除 Namespace/Deployment
-- 批量清理资源
-- 任意 Shell 执行
-- 未白名单的 kubectl 命令
-
-------
-
+| Doc | Topic |
+|-----|-------|
+| [docs/DEPLOY-ONE-SHOT.md](docs/DEPLOY-ONE-SHOT.md) | **P0** One-command server install |
+| [docs/DEPLOY-SERVER.md](docs/DEPLOY-SERVER.md) | Master server deploy index |
+| [docs/ARCHITECTURE-REVIEW.md](docs/ARCHITECTURE-REVIEW.md) | Architecture review |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Weekly plan & progress |
+| [deploy/README.md](deploy/README.md) | systemd / cron install table |
+| [apps/ui/README.md](apps/ui/README.md) | Streamlit run instructions |

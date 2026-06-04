@@ -11,3 +11,12 @@ class McpListResponse(TypedDict, total=False):
     query: str
     results: list[dict[str, Any]]
     cluster_id: str
+
+
+class McpPromQueryResponse(TypedDict, total=False):
+    """Normalized Prometheus MCP tools: ``prom_query``, ``prom_query_range``."""
+
+    query: str
+    result_type: str | None
+    results: list[Any]
+    cluster_id: str

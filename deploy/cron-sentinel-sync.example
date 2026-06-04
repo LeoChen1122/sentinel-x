@@ -1,0 +1,7 @@
+# Sentinel-X K8s sync -> /etc/cron.d/sentinel-sync (chmod 644, LF line endings only)
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Every 5 minutes
+*/5 * * * * root /usr/local/bin/sentinel-sync-k8s.sh >/dev/null 2>&1

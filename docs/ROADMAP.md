@@ -3,8 +3,8 @@
 > 本文档为 **主路线图**：概括当前进度、按优先级排列的后续周计划，以及每周总结的索引。  
 > 每周结束后在 [`docs/weekly/`](weekly/) 新增一份周总结，并回链到本文档对应周次。
 
-**最后更新**：2026-06-02  
-**当前阶段**：Phase 1b — K8s live sync 已打通，进入验收与运维固化
+**最后更新**：2026-06-04  
+**当前阶段**：W4 最小 UI + 部署文档（**live 验收完成**）
 
 ---
 
@@ -19,12 +19,13 @@
 | 阶段 | 文档来源 | 目标 | 整体进度 |
 |------|----------|------|----------|
 | Phase 0 | README | 目录、Skill 模板、工程底座 | 80% |
-| Phase 1 | 桌面「看见系统」 | MCP + Agent 可查询 Pod/指标 | **70%** |
-| Phase 1b | 桌面 phase1b guide | K8s MCP → LangGraph live sync | **首通完成，验收中** |
-| Phase 3 | LangGraph 集成（第三版） | Adapter / Sync / Query 数据面 | 代码 90%，live 60% |
+| Phase 1 | 桌面「看见系统」 | MCP + Agent 可查询 Pod/指标 | **90%** |
+| Phase 1b | 桌面 phase1b guide | K8s MCP → LangGraph live sync | **验收完成** |
+| Phase 1c | W3 Prometheus 进图 | Prom MCP → Pod 指标 enrichment | **live 验收完成** |
+| Phase 3 | LangGraph 集成（第三版） | Adapter / Sync / Query 数据面 | 代码 90%，live 75% |
 | Phase 4 | 多集群（第四版） | cluster_id / tenant 隔离 | mock 100%，live 0% |
 | Phase 5 | Diagnosis / 动作层 | gather → diagnose → execute | 代码 75%，live 20% |
-| MVP 2–5 | 第一版开发方案 | 沙箱 / Skills / Streamlit UI | 0–25% |
+| MVP 2–5 | 第一版开发方案 | 沙箱 / Skills / Streamlit UI | UI **live 完成**；Skills/沙箱 待开始 |
 
 ---
 
@@ -35,36 +36,29 @@
 | 模块 | 内容 | 位置 / 证据 |
 |------|------|-------------|
 | K8s MCP | `k8s_get_pods` / `k8s_get_events`，FastMCP stdio | `mcp-servers/k8s/` |
-| Prometheus MCP | `prom_query` / `prom_query_range`（未进 sync 链） | `mcp-servers/prometheus/` |
-| 图模型与 Adapter | Pod / Event / Node / Inspection，稳定 ID | `agents/langgraph-integration/src/models/` |
-| Sync 管道 | 增量、重试、分块、多集群 mock | `src/sync/` |
-| Query | `list_pods`、`pod_status`、`events_for_pod` 等 6 个 op | `src/query/` |
+| Prometheus MCP | `prom_query` / `prom_query_range` | `mcp-servers/prometheus/` |
+| 图模型与 Adapter | Pod / Event / Node / Inspection；Pod 指标 enrichment | `agents/langgraph-integration/src/models/`、`adapter/metrics.py` |
+| Sync 管道 | 增量、重试、分块；`sync_pod_metrics_resilient` | `src/sync/` |
+| **Prom → 图** | `mcp_prom.py` + `mcp_prom_sync_live.py`；Pod `cpu_cores` / `memory_bytes` | `src/clients/mcp_prom.py`，[DEPLOY-PROM-SYNC.md](DEPLOY-PROM-SYNC.md) |
+| Query | `list_pods`、`pod_status`、`events_for_pod`、`top_pods_by_cpu`、`pod_metrics` 等 | `src/query/` |
 | LangGraph 图 | ingest → gather → diagnose → narrate → execute → query | `agents/langgraph-server/src/graph.py` |
 | Agent | 规则诊断、模板/LLM 叙事、动作注册表（模拟） | `src/agent/` |
-| 单测 | ~175 用例，23 个 test 文件 | `agents/langgraph-integration/tests/` |
+| 单测 | ~180+ 用例 | `agents/langgraph-integration/tests/` |
 | **服务器 live** | k3s 离线恢复；MCP kubeconfig 宿主机 IP；sync 成功 | 7 pods / 65 events → 66 entities |
+| **Prom live** | kube-prometheus NodePort 30909；Prom sync + `top_pods_by_cpu` | entities=7；metrics-server 最高 CPU |
+| **UI live** | Streamlit `:8501`；SSH 隧道；Pods 表含 cpu/memory | 8 pods kube-system；[DEPLOY-UI-LIVE.md](DEPLOY-UI-LIVE.md) |
 
-**Live sync 关键参数（生产服务器）**：
-
-```text
-cluster_id   = k3s-prod
-namespace    = kube-system
-thread_id    = 5ad00ee0-6f4d-5cd6-a021-99469a86e4e1
-MCP_CONTAINER= mcp-servers_mcp-k8s_1
-LANGGRAPH    = http://127.0.0.1:2024
-```
+**Live sync 关键参数**：见 [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md)（`CLUSTER_ID`、`LANGGRAPH_THREAD_ID` 由 config apply 生成）。
 
 ### 3.2 进行中 / 未验收
 
-- Live `list_pods` / `events_for_pod` 查询验收
-- `langgraph dev` systemd 常驻、cron 增量 sync
-- 真实 Pod 上 inspect → diagnose → execute(dry-run) E2E
-- 仓库 `deploy/` 运维模板入库
+- W2-4 可选 LLM（DashScope timeout）
+- W3 可选 Prom cron（`sentinel-sync-prom.sh`）
+- W5 Skills 基础
 
 ### 3.3 未开始（按 MVP 愿景）
 
-- Prometheus → 图 / 查询（Phase 1 指标目标）
-- Streamlit UI、`apps/api`
+- `apps/api` — planned（W7 可选）
 - Skills 存储与检索（Markdown + Chroma）
 - Docker / gVisor 沙箱预演
 - Live K8s 写操作（restart_pod 等）
@@ -73,11 +67,15 @@ LANGGRAPH    = http://127.0.0.1:2024
 ### 3.4 架构现状
 
 ```text
-[k3s API] ← kubeconfig ← [MCP 容器] ← docker exec ← [mcp_k8s_sync_live]
+[k3s API] ← kubeconfig ← [MCP-K8s] ← docker exec ← [mcp_k8s_sync_live]
+                                                          ↓
+[Prometheus :30909] ← host.docker.internal ← [MCP-Prom] ← docker exec ← [mcp_prom_sync_live]
                                                           ↓
                                               [langgraph dev :2024]
                                                           ↓
-                                    [query / inspect / diagnose]（部分 live 待验收）
+                                    [query / inspect / top_pods_by_cpu / pod_metrics]
+                       │
+              [Streamlit UI :8501]  ← SSH tunnel (W4 live ✅)
 ```
 
 ---
@@ -104,9 +102,9 @@ LANGGRAPH    = http://127.0.0.1:2024
 |------|------|-------------|
 | W1-1 | Live query 验收 | `list_pods` 返回 ~7；`events_for_pod` 有数据 |
 | W1-2 | langgraph systemd | 重启后服务自启；文档记录端口与 `.env` 要求 → **[DEPLOY-LANGGRAPH-SYSTEMD.md](DEPLOY-LANGGRAPH-SYSTEMD.md)** |
-| W1-3 | cron 增量 sync | 每 5min `mcp_k8s_sync_live.py`；日志 `/var/log/sentinel-sync.log` |
-| W1-4 | MCP kubeconfig 固化 | `~/.kube/config` 用宿主机 IP；compose 可选 `extra_hosts` |
-| W1-5 | deploy 入库 | `deploy/sentinel-langgraph.service`、`deploy/sync-k8s.sh` |
+| W1-3 | cron 增量 sync | 每 5min `mcp_k8s_sync_live.py`；日志 `/var/log/sentinel-sync.log` → **[DEPLOY-SYNC-CRON.md](DEPLOY-SYNC-CRON.md)** |
+| W1-4 | MCP kubeconfig 固化 | `~/.kube/config` 宿主机 IP 或 `host.docker.internal`；compose `extra_hosts` → **[DEPLOY-MCP-KUBECONFIG.md](DEPLOY-MCP-KUBECONFIG.md)** |
+| W1-5 | deploy 入库 | `deploy/sentinel-langgraph.service`、`deploy/sync-k8s.sh` ✅ |
 | W1-6 | 代码对齐 | 服务器 `mcp_k8s.py` 与仓库 stdin 版一致 |
 
 **W1 完成标准**：cron 跑满 24h 无报错；query 与 kubectl pod 数一致。
@@ -120,43 +118,64 @@ LANGGRAPH    = http://127.0.0.1:2024
 | 序号 | 任务 | 产出 / 验收 |
 |------|------|-------------|
 | W2-1 | 选目标 Pod | kube-system 系统 Pod 或自建 crash 测试 Pod |
-| W2-2 | inspect live | `inspect_langgraph_live_demo.py --live` 出 gather/diagnosis/narrative |
-| W2-3 | execution dry-run | `execution` 含模拟 `restart_pod` 等，无 live 写 |
-| W2-4 | 可选 LLM | DashScope 开启后 narrative_source=llm |
-| W2-5 | 文档 | 更新 ROADMAP §3 + 周总结 W2 |
+| W2-2 | inspect live | `LANGGRAPH_RUN_LIVE=1` + `inspect_langgraph_live_demo.py --thread-only` → gather/diagnosis/narrative → **[DEPLOY-INSPECT-LIVE.md](DEPLOY-INSPECT-LIVE.md)** |
+| W2-3 | execution dry-run | `execution` 含模拟 `restart_pod` 等，无 live 写（Path B CrashLoop） |
+| W2-4 | 可选 LLM | DashScope + `--llm`；`narrative_source=llm` |
+| W2-5 | 文档 | 本文 + ROADMAP §3 + 周总结 W2 |
 
 **W2 完成标准**：stream 中四类输出齐全；diagnosis.issues 对 crash Pod 非空（若用测试 Pod）。
 
 ---
 
-### W3 — P1：Prometheus 进图（Phase 1c）
+### W3 — P1：Prometheus 进图（Phase 1c）— **已完成**
 
 **目标**：补桌面 Phase 1「CPU/内存」查询能力。
 
-| 序号 | 任务 | 产出 / 验收 |
-|------|------|-------------|
-| W3-1 | `clients/mcp_prom.py` | docker exec 或 snapshot 拉 Prom MCP JSON |
-| W3-2 | `scripts/mcp_prom_sync_live.py` | 指标映射到图或 Pod 属性 |
-| W3-3 | Adapter 扩展 | 指标实体或 enrichment 字段 |
-| W3-4 | Query op | 如 `top_pods_by_cpu` 或 `pod_metrics` |
-| W3-5 | 单测 + 服务器验收 | mock + 可选 live（Prometheus 可达） |
+**部署文档** → **[DEPLOY-PROM-SYNC.md](DEPLOY-PROM-SYNC.md)**（前置 Prometheus → **[DEPLOY-PROMETHEUS-K3S.md](DEPLOY-PROMETHEUS-K3S.md)**）
 
-**W3 完成标准**：sync 后能回答「哪个 Pod CPU 使用最高」（Phase 1 原文验收项）。
+| 序号 | 任务 | 产出 / 验收 | 状态 |
+|------|------|-------------|------|
+| W3-0 | k3s 内 Prometheus | 离线 helm pull / helm-charts zip → NodePort 30909 | ✅ live |
+| W3-1 | `clients/mcp_prom.py` | docker exec stdin 或 snapshot 拉 Prom JSON | ✅ 代码 |
+| W3-2 | `scripts/mcp_prom_sync_live.py` | K8s pods + Prom → `sync_pod_metrics_resilient` | ✅ 代码 |
+| W3-3 | Adapter 扩展 | `adapter/metrics.py`；Pod `cpu_cores` / `memory_bytes` | ✅ 代码 |
+| W3-4 | Query op | `top_pods_by_cpu`、`pod_metrics`；`list_pods` 含指标字段 | ✅ 代码 |
+| W3-5 | 单测 + 服务器验收 | `test_mcp_prom_fetch.py`；live Prom 可达 + query | ✅ live |
+| W3-6 | 运维 | `deploy/sync-prom.sh` + env；可选 cron | ✅ 模板 |
+
+**服务器工作流（摘要）**：
+
+1. **前置**：W1 LangGraph + K8s cron 正常；按 [DEPLOY-PROMETHEUS-K3S.md](DEPLOY-PROMETHEUS-K3S.md) 安装 Prometheus（NodePort **30909**）；`mcp-servers/.env` 中 `PROMETHEUS_BASE_URL=http://host.docker.internal:30909`。  
+2. **MCP**：`docker-compose up -d mcp-prometheus`；容器内 `prom_query` 有 vector 结果。  
+3. **手工 sync**：`MCP_K8S_CONTAINER` + `MCP_PROM_CONTAINER` → `mcp_prom_sync_live.py`。  
+4. **查询**：`top_pods_by_cpu` 返回带 `cpu_cores` 的 Pod 排序列表。  
+5. **可选 cron**：`sentinel-sync-prom.sh`（建议在 K8s sync 之后）。
+
+**W3 完成标准**：sync 后能回答「哪个 Pod CPU 使用最高」（Phase 1 原文验收项）。**已于 2026-06-04 live 验收通过**（`sync ok: entities=7`；`top_pods_by_cpu` 返回 `cpu_cores`）。
+
+**默认 PromQL**（cAdvisor / container 指标）：
+
+```promql
+sum(rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m])) by (pod, namespace)
+sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespace)
+```
 
 ---
 
-### W4 — P2：最小演示面 + 工程文档
+### W4 — P2：最小演示面 + 工程文档 — **已完成**
 
 **目标**：非 CLI 也能看结果；换机可复现部署。
 
-| 序号 | 任务 | 产出 / 验收 |
-|------|------|-------------|
-| W4-1 | Streamlit 最小页 | list_pods + inspect 结果展示 |
-| W4-2 | 部署指南 | `docs/DEPLOY-SERVER.md`（k3s 离线、MCP、LangGraph、sync） |
-| W4-3 | README 同步 | 根 README 与实现差距标注（评估报告过时项修正） |
-| W4-4 | langgraph-server  smoke 测试 | 至少 1 个 graph 节点单测 |
+**部署总览** → **[DEPLOY-SERVER.md](DEPLOY-SERVER.md)** · **UI 服务器步骤** → **[DEPLOY-UI-LIVE.md](DEPLOY-UI-LIVE.md)**
 
-**W4 完成标准**：浏览器打开 UI 可见 live pod 列表；新人按 DEPLOY 文档可复现 W1。
+| 序号 | 任务 | 产出 / 验收 | 状态 |
+|------|------|-------------|------|
+| W4-1 | Streamlit 最小页 | list_pods + inspect 结果展示 | ✅ live |
+| W4-2 | 部署指南 | `docs/DEPLOY-SERVER.md` + `DEPLOY-UI-LIVE.md` | ✅ |
+| W4-3 | README 同步 | 根 README 与实现差距标注 | ✅ |
+| W4-4 | langgraph-server smoke 测试 | 至少 1 个 graph 节点单测 | ✅ |
+
+**W4 完成标准**：浏览器打开 UI 可见 live pod 列表；新人按 DEPLOY 文档可复现 W1。**已于 2026-06-04 live 验收通过**（SSH 隧道 `:8501`；8 pods；`cpu_cores`/`memory` 列可见）。
 
 ---
 
@@ -207,6 +226,7 @@ LANGGRAPH    = http://127.0.0.1:2024
 
 | 方向 | 内容 |
 |------|------|
+| **Checkpoint Phase 2** | W5 Skills + W6 沙箱 live 验收后：评估 LangGraph Postgres checkpointer（官方）vs 单机 SQLite；spike `langgraph dev` → `langgraph up` + 持久化 store 对 `stream_sentinel_run` / `thread_id` 的影响 |
 | 多集群 live | `configs/clusters.yaml`、每集群 MCP、``sync_clusters_resilient`` live |
 | Live execute | Action MCP、`SENTINEL_EXECUTE_LIVE=1`、审批流 |
 | 观测扩展 | Loki 日志 MCP、Node live sync、Deployment 拓扑 |
@@ -218,7 +238,7 @@ LANGGRAPH    = http://127.0.0.1:2024
 
 | 风险 | 缓解 |
 |------|------|
-| `langgraph dev` 内存 checkpoint，重启丢图 | cron sync 重建；后续评估持久化方案 |
+| `langgraph dev` 内存 checkpoint，重启丢图 | post-restart hook + cron sync；Phase 2 持久化见 W8+ |
 | 服务器无法访问 GitHub | 本机 scp / 离线包；deploy 文档写清 |
 | MCP 容器内 kubeconfig 127.0.0.1 | 统一宿主机 IP 或 `host.docker.internal` |
 | k3s RC 版 + 历史无 systemd | `systemctl enable k3s`；考虑 stable 替换 |
@@ -236,10 +256,10 @@ LANGGRAPH    = http://127.0.0.1:2024
 
 | 周次 | 文件 | 主题 | 状态 |
 |------|------|------|------|
-| W1 | [2026-W22.md](weekly/2026-W22.md) | Phase 1b live sync 首通 + 运维 | 进行中 |
-| W2 | — | Live inspect E2E | 待开始 |
-| W3 | — | Prometheus 进图 | 待开始 |
-| W4 | — | UI + 部署文档 | 待开始 |
+| W1 | [2026-W22.md](weekly/2026-W22.md) | Phase 1b 验收与运维固化 | **已完成** |
+| W2 | [2026-W22.md](weekly/2026-W22.md) | Live inspect E2E | **已完成** → [DEPLOY-INSPECT-LIVE.md](DEPLOY-INSPECT-LIVE.md) |
+| W3 | [2026-W22.md](weekly/2026-W22.md) §6 | Prometheus 进图 | **已完成** → [DEPLOY-PROM-SYNC.md](DEPLOY-PROM-SYNC.md) |
+| W4 | [2026-W22.md](weekly/2026-W22.md) §7 | UI + 部署文档 | **已完成** → [DEPLOY-UI-LIVE.md](DEPLOY-UI-LIVE.md) |
 | W5 | — | Skills | 待开始 |
 | W6 | — | 沙箱 | 待开始 |
 | W7 | — | 告警 + 半自动闭环 | 待开始 |
@@ -252,21 +272,24 @@ LANGGRAPH    = http://127.0.0.1:2024
 # 环境
 source /opt/sentinel-x/.venv/bin/activate
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
-export LANGGRAPH_API_URL=http://127.0.0.1:2024
+
+# 刷新全部 env（容器重建 / Prom 安装后）
+sudo bash /opt/sentinel-x/deploy/sentinel-config-discover.sh --write
+sudo bash /opt/sentinel-x/deploy/sentinel-config-apply.sh --reload
 
 # Sync
-export MCP_CONTAINER=mcp-servers_mcp-k8s_1
-export CLUSTER_ID=k3s-prod
-export NAMESPACE=kube-system
-python /opt/sentinel-x/agents/langgraph-integration/scripts/mcp_k8s_sync_live.py
+sudo /usr/local/bin/sentinel-sync-k8s.sh
+sudo /usr/local/bin/sentinel-sync-prom.sh   # W3
 
-# Query（替换 thread_id）
-export LANGGRAPH_THREAD_ID=5ad00ee0-6f4d-5cd6-a021-99469a86e4e1
-python /opt/sentinel-x/agents/langgraph-integration/scripts/query_demo.py --live
+# 验证
+sudo bash /opt/sentinel-x/deploy/verify-sentinel-x.sh
 
-# Inspect
+# Inspect（source sync-k8s.env 获取 LANGGRAPH_THREAD_ID）
+set -a && source /etc/sentinel/sync-k8s.env && set +a
 export LANGGRAPH_RUN_LIVE=1
-python /opt/sentinel-x/agents/langgraph-integration/scripts/inspect_langgraph_live_demo.py --live --pod-name <name>
+python /opt/sentinel-x/agents/langgraph-integration/scripts/inspect_langgraph_live_demo.py \
+  --thread-only --cluster-id "$CLUSTER_ID" --namespace "$NAMESPACE" \
+  --pod-name <name> --thread-id "$LANGGRAPH_THREAD_ID"
 ```
 
 ---
@@ -275,6 +298,12 @@ python /opt/sentinel-x/agents/langgraph-integration/scripts/inspect_langgraph_li
 
 | 文档 | 位置 |
 |------|------|
+| **部署参考（canonical）** | [`docs/DEPLOY-REFERENCE.md`](DEPLOY-REFERENCE.md) |
+| W4 服务器部署总览 | [`docs/DEPLOY-SERVER.md`](DEPLOY-SERVER.md) |
+| W4 Streamlit live | [`docs/DEPLOY-UI-LIVE.md`](DEPLOY-UI-LIVE.md) |
+| W2 Live inspect E2E | [`docs/DEPLOY-INSPECT-LIVE.md`](DEPLOY-INSPECT-LIVE.md) |
+| W3 Prom metrics sync | [`docs/DEPLOY-PROM-SYNC.md`](DEPLOY-PROM-SYNC.md) |
+| W3 Prometheus 离线安装 | [`docs/DEPLOY-PROMETHEUS-K3S.md`](DEPLOY-PROMETHEUS-K3S.md) |
 | 仓库 README | [`README.md`](../README.md) |
 | LangGraph 集成 README | [`agents/langgraph-integration/README.md`](../agents/langgraph-integration/README.md) |
 | Phase 1b 操作指南 | 桌面 `sentinel-x-k8s-mcp-phase1b-guide.md` |

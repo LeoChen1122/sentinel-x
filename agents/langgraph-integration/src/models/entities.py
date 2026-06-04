@@ -14,6 +14,8 @@ MCP row → graph property mapping
 | namespace            | —                      | from tool arg ``namespace``    |
 | labels               | —                      | optional; future normalize     |
 | creationTimestamp    | —                      | optional; future normalize     |
+| cpu_cores            | Prom vector (Phase 1c) | ``adapter/metrics.py``         |
+| memory_bytes         | Prom vector (Phase 1c) | ``adapter/metrics.py``         |
 
 **Event** (``k8s_get_events`` / ``normalize_event_list``):
 
@@ -148,6 +150,8 @@ class PodProperties(TypedDict):
     status: str
     labels: NotRequired[dict[str, str]]
     creationTimestamp: NotRequired[str]
+    cpu_cores: NotRequired[float]
+    memory_bytes: NotRequired[int]
 
 
 class EventProperties(TypedDict, total=False):
@@ -296,6 +300,7 @@ def entity_from_pod_row(
     tenant_id: str | None = None,
     labels: dict[str, str] | None = None,
     creation_timestamp: str | None = None,
+    metrics: dict[str, float | int] | None = None,
 ) -> GraphEntity:
     from models.ids import pod_id
     from models.scope import stamp_scope
@@ -311,6 +316,10 @@ def entity_from_pod_row(
         out["labels"] = dict(labels)
     if creation_timestamp:
         out["creationTimestamp"] = creation_timestamp
+    if metrics:
+        for key, value in metrics.items():
+            if value is not None:
+                out[key] = value
     return GraphEntity(
         type=EntityType.POD,
         id=pod_id(cluster_id, namespace, name),

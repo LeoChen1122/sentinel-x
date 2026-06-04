@@ -1,0 +1,3 @@
+streamlit>=1.28.0
+langgraph-sdk
+openai>=1.0.0

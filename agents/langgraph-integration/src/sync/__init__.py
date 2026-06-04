@@ -11,6 +11,7 @@ from sync.pipeline import (
     sync_inspections_resilient,
     sync_pods_and_events,
     sync_pods_and_events_resilient,
+    sync_pod_metrics_resilient,
     sync_pods_events_inspections_resilient,
 )
 from sync.scheduler import PeriodicSyncStats, run_periodic_sync
@@ -39,6 +40,7 @@ __all__ = [
     "push_graph_batch_resilient",
     "sync_pods_and_events",
     "sync_pods_and_events_resilient",
+    "sync_pod_metrics_resilient",
     "sync_inspections_resilient",
     "sync_pods_events_inspections_resilient",
     "sync_clusters_resilient",

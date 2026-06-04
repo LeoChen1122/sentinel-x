@@ -1,3 +1,4 @@
 langgraph
 langgraph-sdk
 httpx
+pytest>=7.0.0

@@ -1,0 +1,32 @@
+# Minimal kube-prometheus-stack for single-node k3s (Sentinel-X W3 prerequisite).
+# Exposes Prometheus on NodePort 30909 for host + MCP docker (host.docker.internal:30909).
+
+grafana:
+  enabled: false
+
+alertmanager:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    retention: 7d
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+  service:
+    type: NodePort
+    nodePort: 30909
+
+kube-state-metrics:
+  enabled: true
+
+prometheus-node-exporter:
+  enabled: true
+
+# k3s single-node: avoid scheduling pressure from anti-affinity defaults
+prometheusOperator:
+  admissionWebhooks:
+    failurePolicy: Ignore

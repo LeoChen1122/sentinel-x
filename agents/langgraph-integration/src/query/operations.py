@@ -93,6 +93,24 @@ def run_query(payload: dict[str, Any], op: str, **params: Any) -> dict[str, Any]
             params.get("name"),
             tenant_id=tenant_id,
         )
+    if op == "top_pods_by_cpu":
+        return _top_pods_by_cpu(
+            view,
+            params.get("cluster_id"),
+            params.get("namespace"),
+            limit=params.get("limit", 10),
+            tenant_id=tenant_id,
+        )
+    if op == "pod_metrics":
+        cid = _require_cluster_id(params.get("cluster_id"))
+        _acl_cluster(tenant_id, cid)
+        return _pod_metrics(
+            view,
+            cid,
+            params.get("namespace"),
+            params.get("name"),
+            tenant_id=tenant_id,
+        )
     raise QueryError(f"unknown query op: {op}")
 
 
@@ -141,6 +159,8 @@ def _list_pods(
                 "name": props.get("name"),
                 "namespace": props.get("namespace"),
                 "status": props.get("status"),
+                "cpu_cores": props.get("cpu_cores"),
+                "memory_bytes": props.get("memory_bytes"),
             }
         )
     return {"op": "list_pods", "count": len(rows), "pods": rows}
@@ -368,6 +388,94 @@ def _inspections_for_pod(
         "name": name,
         "count": len(rows),
         "inspections": rows,
+    }
+
+
+def _metric_float(props: dict[str, Any], key: str) -> float | None:
+    raw = props.get(key)
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _top_pods_by_cpu(
+    view: GraphView,
+    cluster_id: str | None,
+    namespace: str | None,
+    *,
+    limit: int = 10,
+    tenant_id: str | None = None,
+) -> dict[str, Any]:
+    tid = _active_tenant_id(tenant_id)
+    if tid is not None:
+        _acl_cluster(tenant_id, cluster_id)
+    pods = view.entities_by_type(EntityType.POD.value)
+    if cluster_id is not None:
+        cid = str(cluster_id).strip()
+        pods = [p for p in pods if _props_cluster(p.get("properties") or {}) == cid]
+    pods = _filter_entities_by_tenant(pods, tenant_id)
+    if namespace is not None:
+        ns = str(namespace).strip()
+        pods = [p for p in pods if str(p.get("properties", {}).get("namespace")) == ns]
+
+    rows: list[dict[str, Any]] = []
+    for p in pods:
+        props = p.get("properties") or {}
+        cpu = _metric_float(props, "cpu_cores")
+        if cpu is None:
+            continue
+        rows.append(
+            {
+                "id": p.get("id"),
+                "cluster_id": props.get("cluster_id"),
+                "name": props.get("name"),
+                "namespace": props.get("namespace"),
+                "status": props.get("status"),
+                "cpu_cores": cpu,
+                "memory_bytes": props.get("memory_bytes"),
+            }
+        )
+    rows.sort(key=lambda r: r["cpu_cores"], reverse=True)
+    cap = max(1, int(limit)) if limit else 10
+    rows = rows[:cap]
+    return {"op": "top_pods_by_cpu", "count": len(rows), "pods": rows}
+
+
+def _pod_metrics(
+    view: GraphView,
+    cluster_id: str,
+    namespace: str | None,
+    name: str | None,
+    *,
+    tenant_id: str | None = None,
+) -> dict[str, Any]:
+    if not namespace or not name:
+        raise QueryError("pod_metrics requires namespace and name")
+    pid = view.pod_entity_id(cluster_id, str(namespace), str(name))
+    ent = view.entities.get(pid)
+    tid = _active_tenant_id(tenant_id)
+    if ent is None or (tid is not None and not _entity_matches_tenant(ent, tid)):
+        return {
+            "op": "pod_metrics",
+            "found": False,
+            "cluster_id": cluster_id,
+            "namespace": namespace,
+            "name": name,
+        }
+    props = ent.get("properties") or {}
+    return {
+        "op": "pod_metrics",
+        "found": True,
+        "id": pid,
+        "cluster_id": cluster_id,
+        "namespace": namespace,
+        "name": name,
+        "cpu_cores": _metric_float(props, "cpu_cores"),
+        "memory_bytes": props.get("memory_bytes"),
+        "status": props.get("status"),
     }
 
 

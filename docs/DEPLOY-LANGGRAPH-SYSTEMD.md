@@ -1,5 +1,6 @@
 # W1-2：LangGraph systemd 常驻部署
 
+> 公共参数与验证见 [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md)  
 > 目标：`langgraph dev` 在服务器上 **开机自启、崩溃自动拉起**，监听 `127.0.0.1:2024`。  
 > 适用路径：`/opt/sentinel-x`（与当前 `sentinel-x` 服务器一致）。
 
@@ -18,7 +19,7 @@ systemd (sentinel-langgraph.service)
 
 **注意**：
 
-- `langgraph dev` 使用 **内存 checkpoint**；进程重启后 thread 图状态会丢，需靠 **cron sync**（W1-3）重建。
+- `langgraph dev` 使用 **内存 checkpoint**；进程重启后 thread 图状态会丢 — 见 [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md) **Checkpoint 契约**（`ExecStartPost` hook + cron sync）。
 - API 只绑 `127.0.0.1`，外网访问请用 SSH 隧道：  
   `ssh -L 2024:127.0.0.1:2024 root@sentinel-x`
 
@@ -135,17 +136,10 @@ python scripts/langgraph_live_verify.py
 **若已有 sync 数据**，再验 query：
 
 ```bash
-export PYTHONPATH=/opt/sentinel-x/agents/langgraph-integration/src
-export LANGGRAPH_THREAD_ID=5ad00ee0-6f4d-5cd6-a021-99469a86e4e1
-
-python -c "
-from clients.langgraph_client import query_sentinel
-print(query_sentinel('list_pods', thread_id='$LANGGRAPH_THREAD_ID',
-      cluster_id='k3s-prod', namespace='kube-system'))
-"
+sudo bash /opt/sentinel-x/deploy/verify-sentinel-x.sh
 ```
 
-重启后 thread 可能为空 → 需再跑 `mcp_k8s_sync_live.py`（W1-3 cron 会处理）。
+重启后 thread 可能为空 → 见 Checkpoint 契约；`verify-sentinel-x.sh --after-restart` 可诊断。
 
 ---
 
@@ -206,13 +200,12 @@ sudo systemctl restart sentinel-langgraph
 
 ### 4. 重启后 list_pods 为空
 
-dev 模式 checkpoint 在内存 → **正常**。执行：
+dev 模式 checkpoint 在内存 → **正常**。见 [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md) Checkpoint 契约：
 
 ```bash
-python /opt/sentinel-x/agents/langgraph-integration/scripts/mcp_k8s_sync_live.py
+sudo /usr/local/bin/sentinel-sync-k8s.sh
+sudo bash /opt/sentinel-x/deploy/verify-sentinel-x.sh --after-restart
 ```
-
-并配置 W1-3 cron。
 
 ### 5. 与手动 `langgraph dev` 冲突
 
@@ -225,7 +218,7 @@ python /opt/sentinel-x/agents/langgraph-integration/scripts/mcp_k8s_sync_live.py
 | 项 | 说明 |
 |----|------|
 | W1-3 cron sync | LangGraph 重启后靠 sync 恢复图数据 |
-| W1-4 MCP kubeconfig | 与 LangGraph 无关，但 sync 依赖 MCP |
+| W1-4 MCP kubeconfig | 与 LangGraph 无关，但 sync 依赖 MCP → [DEPLOY-MCP-KUBECONFIG.md](DEPLOY-MCP-KUBECONFIG.md) |
 | 顺序建议 | **W1-2 systemd → W1-3 cron → 24h 观察** |
 
 ---
