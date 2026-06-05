@@ -1,0 +1,29 @@
+[Unit]
+Description=Sentinel-X Streamlit UI (W4)
+Documentation=file:/opt/sentinel-x/docs/deploy/DEPLOY-UI-LIVE.md
+After=network-online.target sentinel-langgraph.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/sentinel-x
+
+EnvironmentFile=-/etc/sentinel/sentinel-ui.env
+Environment=PATH=/opt/sentinel-x/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+
+# Bind localhost only; access via SSH tunnel (see DEPLOY-UI-LIVE.md)
+ExecStart=/opt/sentinel-x/.venv/bin/streamlit run /opt/sentinel-x/apps/ui/app.py --server.address 127.0.0.1 --server.port 8501 --browser.gatherUsageStats false
+
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentinel-ui
+
+[Install]
+WantedBy=multi-user.target

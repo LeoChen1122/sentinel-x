@@ -17,7 +17,7 @@
 | 数据面（Adapter / Sync / Query） | `agents/langgraph-integration/src/` | LangGraph 集成 | **Live** |
 | 编排图（ingest → gather → diagnose → …） | `agents/langgraph-server/src/graph.py` | Agent 图 | **Live** |
 | 运维脚本 | `deploy/*.sh`、`deploy/*.service` | deploy 模板 | **Live** |
-| 部署文档 | `docs/DEPLOY-*.md`（8 篇 + ROADMAP） | 文档 | **Live，偏冗长** |
+| 部署文档 | `docs/deploy/DEPLOY-*.md`（8 篇 + ROADMAP） | 文档 | **Live，偏冗长** |
 | Streamlit UI | `apps/ui/app.py` | MVP UI | **Minimal live** |
 | 离线 Prom bundle | `dist/kube-prometheus-offline/` | 未在 README 树中列出 | **Live（运维用）** |
 | FastAPI `apps/api` | — | W7 可选 | **未实现** |
@@ -148,22 +148,21 @@
 ### 4.1 文档重复
 
 - **同一 `thread_id`、容器名、验证命令** 在以下文件中重复出现 5–10 次：  
-  `docs/DEPLOY-SERVER.md`、`DEPLOY-SYNC-CRON.md`、`DEPLOY-PROM-SYNC.md`、`DEPLOY-UI-LIVE.md`、`DEPLOY-INSPECT-LIVE.md`、`DEPLOY-LANGGRAPH-SYSTEMD.md`、`ROADMAP.md §8`、`apps/ui/README.md`。
+  `docs/deploy/DEPLOY-SERVER.md`、`DEPLOY-SYNC-CRON.md`、`DEPLOY-PROM-SYNC.md`、`DEPLOY-UI-LIVE.md`、`DEPLOY-INSPECT-LIVE.md`、`DEPLOY-LANGGRAPH-SYSTEMD.md`、`ROADMAP.md §8`、`apps/ui/README.md`。
 - **缓解**：以 `DEPLOY-SERVER.md` + 新建 `DEPLOY-ONE-SHOT.md` 为入口，子文档只保留差异步骤。
 
 ### 4.2 脚本与 bundle 重复
 
-- `deploy/install-kube-prometheus-offline.sh` 与 `dist/kube-prometheus-offline/install-kube-prometheus-offline.sh` **内容镜像**（维护两份）。
-- `deploy/kube-prometheus-values-minimal.yaml` 与 bundle 内 values 可能漂移。
+- `deploy/prometheus/install-kube-prometheus-offline.sh` 与 `dist/kube-prometheus-offline/install-kube-prometheus-offline.sh` **内容镜像**（维护两份；dist 由 PS1 复制）。
+- `deploy/prometheus/kube-prometheus-values-minimal.yaml` 与 bundle 内 values 可能漂移。
 
 ### 4.3 代码层
 
 | 项 | 路径 | 说明 |
 |----|------|------|
 | 多集群 mock | `sync/multicluster.py`, `tests/test_multicluster*.py` | live 未用，但为 Phase 4 预留，**可保留** |
-| 大量 demo 脚本 | `agents/langgraph-integration/scripts/*_demo.py`（10+） | 开发便利；非运行时，文档勿引导生产执行 |
-| `sync/pipeline.py` 多个 `sync_*_resilient` 变体 | 部分仅测试/未来 inspection 用 | 轻微重复，尚未抽公共骨架 |
-| MCP tar 产物 | `mcp-servers/k8s-mcp.tar`, `prom-mcp.tar` | 可能与 `docker build` 重复；确认是否仍需要 scp 预构建 |
+| demo 脚本 | `agents/langgraph-integration/scripts/demo/`（10+） | 已从 `scripts/live/` 隔离；非运行时 |
+| MCP tar 产物 | `mcp-servers/images/*.tar` | 可能与 `docker build` 重复；确认是否仍需要 scp 预构建 |
 | `dist/kube-prometheus-offline/` 体积 | 整 chart 入库 | 离线必需，但拉高 clone/scp 成本；宜与源码分包 |
 
 ### 4.4 死代码 / 未接线
@@ -198,24 +197,24 @@
 
 ### P0（新服务器下周落地） — **已完成（W23 技术债整改）**
 
-1. **一键安装**：`deploy/install-sentinel-x.sh` + `docs/DEPLOY-ONE-SHOT.md` ✅
-2. **安装后验证脚本**：`deploy/verify-sentinel-x.sh`（含 `--after-restart`）✅
-3. **Checkpoint 契约**：`docs/DEPLOY-REFERENCE.md` + post-restart hook ✅
-4. **配置 SSOT**：`sentinel-config-discover.sh` + `sentinel-config-apply.sh` ✅
+1. **一键安装**：`deploy/install/install-sentinel-x.sh` + `docs/deploy/DEPLOY-ONE-SHOT.md` ✅
+2. **安装后验证脚本**：`deploy/verify/verify-sentinel-x.sh`（含 `--after-restart`）✅
+3. **Checkpoint 契约**：`docs/deploy/DEPLOY-REFERENCE.md` + post-restart hook ✅
+4. **配置 SSOT**：`deploy/config/sentinel-config-discover.sh` + `sentinel-config-apply.sh` ✅
 
 ### P1（1–2 周内） — **部分已完成**
 
 1. **`pip install -e` integration package**，去掉 `graph.py` / UI 的 `sys.path`。（待做）
 2. **合并 kube-prometheus 安装脚本** 为单一来源 ✅（`deploy/` canonical，`dist/` copy only）
 3. **docker compose v2** 检测写入 installer；弃用 v1 混用说明。（待做）
-4. **收敛 DEPLOY 文档** ✅ — [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md) + 子文档瘦身
+4. **收敛 DEPLOY 文档** ✅ — [deploy/DEPLOY-REFERENCE.md](deploy/DEPLOY-REFERENCE.md) + 子文档瘦身
 
 ### P2（Phase 2 前）
 
 1. LangGraph **持久化 checkpoint** 调研（官方 Postgres）— 见 [ROADMAP.md](ROADMAP.md) W8+ Checkpoint Phase 2。
 2. **结构化配置**：`configs/clusters.yaml` 驱动 sync cron 多实例（替代多份 env）。
 3. UI / inspect **集成测试**（mock LangGraph SDK）。
-4. **清理** demo 脚本目录或移到 `examples/`。
+4. ~~**清理** demo 脚本目录或移到 `examples/`~~ ✅ 已迁至 `scripts/demo/`
 
 ---
 

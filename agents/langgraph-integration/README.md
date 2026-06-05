@@ -27,7 +27,8 @@ Related package: [`../langgraph-server`](../langgraph-server) — run with `lang
 | `src/utils/` | `chunk_graph_batch`, `merge_graph_batches` (step 8) |
 | `src/testing/` | Multicluster MCP mocks (`multicluster_fixtures.py`, phase 4-0) |
 | `tests/` | Unit tests (no live LangGraph required for most cases) |
-| `scripts/` | `full_pipeline_demo.py`, `query_demo.py`, `sync_once_demo.py`, `smoke_local_langgraph.py` |
+| `scripts/live/` | Production cron entry points (`mcp_k8s_sync_live.py`, `mcp_prom_sync_live.py`) |
+| `scripts/demo/` | Dev demos and smoke tests (`*_demo.py`, `smoke_local_langgraph.py`) |
 
 ## Development
 

@@ -2,12 +2,12 @@
 
 Minimal browser UI for live pod list, top CPU, and inspect results against a LangGraph thread checkpoint.
 
-**服务器完整步骤** → **[docs/DEPLOY-UI-LIVE.md](../../docs/DEPLOY-UI-LIVE.md)**
+**服务器完整步骤** → **[docs/deploy/DEPLOY-UI-LIVE.md](../../docs/deploy/DEPLOY-UI-LIVE.md)**
 
 ## Prerequisites
 
 - LangGraph server running (`sentinel-langgraph.service`)
-- K8s sync has populated the thread ([DEPLOY-SERVER.md](../../docs/DEPLOY-SERVER.md))
+- K8s sync has populated the thread ([DEPLOY-SERVER.md](../../docs/deploy/DEPLOY-SERVER.md))
 - Optional: Prom sync for CPU/memory columns (W3)
 
 ## Local run
@@ -33,7 +33,7 @@ Open http://localhost:8501
 
 ## Server run (summary)
 
-See [DEPLOY-UI-LIVE.md](../../docs/DEPLOY-UI-LIVE.md) for scp, deps, acceptance.
+See [DEPLOY-UI-LIVE.md](../../docs/deploy/DEPLOY-UI-LIVE.md) for scp, deps, acceptance.
 
 ```bash
 source /opt/sentinel-x/.venv/bin/activate

@@ -13,10 +13,10 @@
 |------|--------|----------|
 | K8s / Prom MCP | **Live** | `mcp-servers/` |
 | LangGraph graph + sync/query | **Live** | `agents/langgraph-integration/`, `agents/langgraph-server/` |
-| Deploy scripts + runbooks | **Live** | `deploy/`, `docs/DEPLOY-*.md` |
+| Deploy scripts + runbooks | **Live** | `deploy/`, `docs/deploy/DEPLOY-*.md` |
 | Streamlit UI (W4) | **Minimal** | `apps/ui/` |
-| Inspect / diagnose E2E | **Live (dry-run)** | `scripts/inspect_langgraph_live_demo.py` |
-| Prom metrics in graph (W3) | **Live** | `mcp_prom_sync_live.py`, `top_pods_by_cpu` |
+| Inspect / diagnose E2E | **Live (dry-run)** | `agents/langgraph-integration/scripts/demo/inspect_langgraph_live_demo.py` |
+| Prom metrics in graph (W3) | **Live** | `scripts/live/mcp_prom_sync_live.py`, `top_pods_by_cpu` |
 | FastAPI `apps/api` | Planned (W7) | — |
 | Root `docker-compose.yml` | Planned | — |
 | `sandbox/` pre-run | Planned (W6) | — |
@@ -32,12 +32,13 @@
 sentinel-x/
 ├── agents/
 │   ├── langgraph-integration/   # Adapter, sync, query, MCP clients, agent logic
+│   │   └── scripts/live|demo/   # Production sync vs dev demos
 │   └── langgraph-server/        # LangGraph dev graph (ingest → … → query)
 ├── apps/
 │   └── ui/                      # Streamlit minimal UI (W4)
-├── mcp-servers/                 # K8s + Prometheus MCP (docker-compose)
-├── deploy/                      # systemd, cron, sync shell templates
-├── docs/                        # ROADMAP, DEPLOY-*, weekly notes
+├── mcp-servers/                 # k8s/, prometheus/, compose/, images/
+├── deploy/                      # install/, config/, sync/, systemd/, prometheus/, verify/
+├── docs/                        # ROADMAP, deploy/, weekly/
 └── dist/                        # Offline helm bundles (kube-prometheus)
 ```
 
@@ -47,9 +48,9 @@ sentinel-x/
 
 ## Quick start — production server
 
-**New server (P0):** one-command install → **[docs/DEPLOY-ONE-SHOT.md](docs/DEPLOY-ONE-SHOT.md)** (`sudo bash deploy/install-sentinel-x.sh`).
+**New server (P0):** one-command install → **[docs/deploy/DEPLOY-ONE-SHOT.md](docs/deploy/DEPLOY-ONE-SHOT.md)** (`sudo bash deploy/install/install-sentinel-x.sh`).
 
-Step-by-step index → **[docs/DEPLOY-SERVER.md](docs/DEPLOY-SERVER.md)**
+Step-by-step index → **[docs/deploy/DEPLOY-SERVER.md](docs/deploy/DEPLOY-SERVER.md)**
 
 Ordered setup: k3s → MCP kubeconfig → LangGraph systemd → K8s cron sync → (optional) Prom → UI.
 
@@ -138,8 +139,8 @@ Default deny: delete namespace, bulk cleanup, arbitrary shell, non-whitelisted k
 
 | Doc | Topic |
 |-----|-------|
-| [docs/DEPLOY-ONE-SHOT.md](docs/DEPLOY-ONE-SHOT.md) | **P0** One-command server install |
-| [docs/DEPLOY-SERVER.md](docs/DEPLOY-SERVER.md) | Master server deploy index |
+| [docs/deploy/DEPLOY-ONE-SHOT.md](docs/deploy/DEPLOY-ONE-SHOT.md) | **P0** One-command server install |
+| [docs/deploy/DEPLOY-SERVER.md](docs/deploy/DEPLOY-SERVER.md) | Master server deploy index |
 | [docs/ARCHITECTURE-REVIEW.md](docs/ARCHITECTURE-REVIEW.md) | Architecture review |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Weekly plan & progress |
 | [deploy/README.md](deploy/README.md) | systemd / cron install table |

@@ -179,12 +179,12 @@ def main() -> None:
         st.warning(err)
         st.info(
             "Start LangGraph (`langgraph dev` or systemd), run K8s sync cron, then set "
-            "`LANGGRAPH_RUN_LIVE=1`. Config: `docs/DEPLOY-REFERENCE.md`."
+            "`LANGGRAPH_RUN_LIVE=1`. Config: `docs/deploy/DEPLOY-REFERENCE.md`."
         )
         return
 
     if not cfg["thread_id"].strip():
-        st.error("Set LANGGRAPH_THREAD_ID or CLUSTER_ID (see docs/DEPLOY-REFERENCE.md).")
+        st.error("Set LANGGRAPH_THREAD_ID or CLUSTER_ID (see docs/deploy/DEPLOY-REFERENCE.md).")
         return
 
     st.success(f"Connected to {cfg['api_url']}")
