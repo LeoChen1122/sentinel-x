@@ -6,6 +6,7 @@ from typing import Any
 
 from agent.types import DiagnosisReport, GatherResult, InspectionReport, LinkedEntity, ReportSection
 from models.entities import EntityType
+from skills.models import SkillMatch
 
 
 def _linked_event(row: dict[str, Any]) -> LinkedEntity:
@@ -40,7 +41,43 @@ def _linked_pod(entity_id: str, label: str | None = None) -> LinkedEntity:
     )
 
 
-def build_report_template(gather: GatherResult) -> InspectionReport:
+def _append_skill_matches(
+    report: InspectionReport,
+    skill_matches: list[SkillMatch] | None,
+) -> InspectionReport:
+    if not skill_matches:
+        return report
+    lines: list[str] = []
+    for match in skill_matches:
+        extra = ""
+        if match.get("hit_count", 1) > 1:
+            extra += f" (seen {match['hit_count']} times)"
+        if match.get("source_count", 1) > 1:
+            extra += f" from {match['source_count']} pods"
+        verified = "verified" if match.get("verified") else "unverified"
+        lines.append(
+            f"- **{match.get('name', '')}** — {match.get('symptom', '')}: "
+            f"{match.get('summary', '')}{extra} [{verified}]"
+        )
+    section = ReportSection(
+        title="Similar past skills",
+        body="\n".join(lines),
+        linked_entities=[],
+    )
+    sections = list(report.get("sections") or [])
+    sections.append(section)
+    md = (report.get("markdown") or "").rstrip() + "\n\n## Similar past skills\n\n" + "\n".join(lines) + "\n"
+    updated = dict(report)
+    updated["sections"] = sections
+    updated["markdown"] = md
+    return InspectionReport(**updated)
+
+
+def build_report_template(
+    gather: GatherResult,
+    *,
+    skill_matches: list[SkillMatch] | None = None,
+) -> InspectionReport:
     """Turn gather facts into structured ``InspectionReport`` (phase A template)."""
     q = gather["queries"]
     pod_status = q.get("pod_status") or {}
@@ -153,7 +190,7 @@ def build_report_template(gather: GatherResult) -> InspectionReport:
         md_parts.append("")
     markdown = "\n".join(md_parts).strip() + "\n"
 
-    return InspectionReport(
+    base = InspectionReport(
         cluster_id=cid,
         namespace=ns,
         pod_name=pname,
@@ -170,6 +207,7 @@ def build_report_template(gather: GatherResult) -> InspectionReport:
         error_stage=None,
         llm_error=None,
     )
+    return _append_skill_matches(base, skill_matches)
 
 
 def build_report(
@@ -177,14 +215,16 @@ def build_report(
     *,
     use_llm: bool | None = None,
     diagnosis: DiagnosisReport | None = None,
+    skill_matches: list[SkillMatch] | None = None,
 ) -> InspectionReport:
     """Template report; optionally polish with LLM (Qwen via DashScope compatible API)."""
     from agent.llm import polish_inspection_report, resolve_use_llm
 
-    base = build_report_template(gather)
+    base = build_report_template(gather, skill_matches=None)
     if not resolve_use_llm(use_llm):
-        return base
-    return polish_inspection_report(base, gather, diagnosis=diagnosis)
+        return _append_skill_matches(base, skill_matches)
+    polished = polish_inspection_report(base, gather, diagnosis=diagnosis)
+    return _append_skill_matches(polished, skill_matches)
 
 
 def build_report_from_gather_dict(
@@ -192,6 +232,7 @@ def build_report_from_gather_dict(
     *,
     use_llm: bool | None = None,
     diagnosis: dict[str, Any] | DiagnosisReport | None = None,
+    skill_matches: list[SkillMatch] | None = None,
 ) -> InspectionReport:
     """Accept wire ``payload.gather`` / optional ``payload.diagnosis`` dict."""
     diag: DiagnosisReport | None = None
@@ -200,8 +241,10 @@ def build_report_from_gather_dict(
             diag = DiagnosisReport(**diagnosis)
         else:
             diag = diagnosis
+    matches: list[SkillMatch] | None = skill_matches
     return build_report(
         GatherResult(**gather),
         use_llm=use_llm,
         diagnosis=diag,
+        skill_matches=matches,
     )

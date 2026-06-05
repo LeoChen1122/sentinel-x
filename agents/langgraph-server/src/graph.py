@@ -115,12 +115,33 @@ def narrate(state: State) -> State:
         use_llm = req.get("use_llm")
     raw_diagnosis = payload.get("diagnosis")
     diagnosis = raw_diagnosis if isinstance(raw_diagnosis, dict) else None
+    raw_matches = payload.get("skill_matches")
+    skill_matches = raw_matches if isinstance(raw_matches, list) else None
     report = build_report_from_gather_dict(
         raw_gather,
         use_llm=use_llm,
         diagnosis=diagnosis,
+        skill_matches=skill_matches,
     )
     payload["narrative"] = dict(report)
+    return {"payload": payload}
+
+
+def retrieve_skills(state: State) -> State:
+    """Search skill store from ``payload.diagnosis`` → ``payload.skill_matches``."""
+    payload = dict(state.get("payload") or {})
+    raw_diagnosis = payload.get("diagnosis")
+    if not isinstance(raw_diagnosis, dict):
+        return {"payload": payload}
+    from agent.types import DiagnosisReport  # noqa: E402
+    from skills.retrieve import retrieve_for_diagnosis  # noqa: E402
+
+    diagnosis = DiagnosisReport(**raw_diagnosis)
+    if not diagnosis.get("issues"):
+        payload["skill_matches"] = []
+        return {"payload": payload}
+    matches = retrieve_for_diagnosis(diagnosis)
+    payload["skill_matches"] = [dict(m) for m in matches]
     return {"payload": payload}
 
 
@@ -160,6 +181,53 @@ def execute(state: State) -> State:
     return {"payload": payload}
 
 
+def verify_skill(state: State) -> State:
+    """W5 stub: mark skill verification false until sandbox/manual ack (W6+)."""
+    payload = dict(state.get("payload") or {})
+    raw_execution = payload.get("execution")
+    dry_run = True
+    if isinstance(raw_execution, dict):
+        dry_run = bool(raw_execution.get("dry_run", True))
+    payload["skill_verification"] = {
+        "verified": False,
+        "reason": "w5_dry_run_only" if dry_run else "w5_unverified",
+    }
+    return {"payload": payload}
+
+
+def record_skill(state: State) -> State:
+    """Persist skill Markdown when diagnosis has issues and recording is enabled."""
+    payload = dict(state.get("payload") or {})
+    from skills.config import skills_config  # noqa: E402
+    from skills.store import get_default_store  # noqa: E402
+    from skills.writer import build_skill_markdown  # noqa: E402
+    from agent.types import DiagnosisReport, GatherResult  # noqa: E402
+
+    cfg = skills_config()
+    if not cfg.record_enabled:
+        return {"payload": payload}
+
+    raw_gather = payload.get("gather")
+    raw_diagnosis = payload.get("diagnosis")
+    if not isinstance(raw_gather, dict) or not isinstance(raw_diagnosis, dict):
+        return {"payload": payload}
+
+    diagnosis = DiagnosisReport(**raw_diagnosis)
+    if not diagnosis.get("issues"):
+        return {"payload": payload}
+
+    gather = GatherResult(**raw_gather)
+    verified = False
+    raw_ver = payload.get("skill_verification")
+    if isinstance(raw_ver, dict) and raw_ver.get("verified") is True:
+        verified = True
+
+    markdown = build_skill_markdown(gather, diagnosis, verified=verified)
+    result = get_default_store().upsert_skill(markdown)
+    payload["skill_record"] = dict(result)
+    return {"payload": payload}
+
+
 def query(state: State) -> State:
     """Run ``payload.query`` against accumulated graph; set ``query_result``."""
     payload = dict(state.get("payload") or {})
@@ -176,14 +244,20 @@ builder.add_node("ingest", ingest)
 builder.add_node("gather", gather)
 builder.add_node("narrate", narrate)
 builder.add_node("diagnose", diagnose)
+builder.add_node("retrieve_skills", retrieve_skills)
 builder.add_node("execute", execute)
+builder.add_node("verify_skill", verify_skill)
+builder.add_node("record_skill", record_skill)
 builder.add_node("query", query)
 builder.add_edge(START, "ingest")
 builder.add_edge("ingest", "gather")
 builder.add_edge("gather", "diagnose")
-builder.add_edge("diagnose", "narrate")
+builder.add_edge("diagnose", "retrieve_skills")
+builder.add_edge("retrieve_skills", "narrate")
 builder.add_edge("narrate", "execute")
-builder.add_edge("execute", "query")
+builder.add_edge("execute", "verify_skill")
+builder.add_edge("verify_skill", "record_skill")
+builder.add_edge("record_skill", "query")
 builder.add_edge("query", END)
 
 graph = builder.compile()

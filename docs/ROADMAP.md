@@ -185,12 +185,12 @@ sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespac
 
 | 序号 | 任务 | 产出 / 验收 |
 |------|------|-------------|
-| W5-1 | `skills/` 目录与模板 | 对齐 README Skill 示例 |
-| W5-2 | skill_writer 节点或脚本 | 成功 inspect 后生成 Markdown |
-| W5-3 | 检索 | SQLite FTS 或 Chroma 最小集成 |
-| W5-4 | Agent 接入 | diagnose 后检索相似 Skill 摘要 |
+| W5-1 | `skills/` 目录与模板 | ✅ Skill/Evidence 分离；[`skills/TEMPLATE.md`](../skills/TEMPLATE.md) |
+| W5-2 | skill_writer + `record_skill` | ✅ `src/skills/writer.py`；execute → verify → record 节点 |
+| W5-3 | 检索 | ✅ SQLite FTS5 + `ISSUE_SYNONYMS`；`SkillStore` Protocol |
+| W5-4 | Agent 接入 | ✅ `retrieve_skills` → narrative `Similar past skills` |
 
-**W5 完成标准**：同一 CrashLoop 场景第二次可命中历史 Skill 摘要。
+**W5 完成标准**：同一 CrashLoop 场景第二次可命中历史 Skill 摘要。**单元测试已覆盖**（`test_skills_retrieve_integration.py`）。
 
 ---
 
@@ -260,7 +260,7 @@ sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespac
 | W2 | [2026-W22.md](weekly/2026-W22.md) | Live inspect E2E | **已完成** → [DEPLOY-INSPECT-LIVE.md](deploy/DEPLOY-INSPECT-LIVE.md) |
 | W3 | [2026-W22.md](weekly/2026-W22.md) §6 | Prometheus 进图 | **已完成** → [DEPLOY-PROM-SYNC.md](deploy/DEPLOY-PROM-SYNC.md) |
 | W4 | [2026-W22.md](weekly/2026-W22.md) §7 | UI + 部署文档 | **已完成** → [DEPLOY-UI-LIVE.md](deploy/DEPLOY-UI-LIVE.md) |
-| W5 | — | Skills | 待开始 |
+| W5 | — | Skills | **已完成** → [`skills/README.md`](../skills/README.md) |
 | W6 | — | 沙箱 | 待开始 |
 | W7 | — | 告警 + 半自动闭环 | 待开始 |
 

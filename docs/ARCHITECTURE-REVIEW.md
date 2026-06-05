@@ -21,7 +21,8 @@
 | Streamlit UI | `apps/ui/app.py` | MVP UI | **Minimal live** |
 | 离线 Prom bundle | `dist/kube-prometheus-offline/` | 未在 README 树中列出 | **Live（运维用）** |
 | FastAPI `apps/api` | — | W7 可选 | **未实现** |
-| `sandbox/`、`skills/` | — | W5/W6 | **未实现** |
+| `sandbox/` | — | W6 | **未实现** |
+| `skills/` | Markdown + SQLite FTS | W5 | **Live** — [`skills/`](../skills/), [`src/skills/`](../agents/langgraph-integration/src/skills/) |
 | 根目录 `docker-compose.yml` | — | 统一 compose | **未实现**（仅 `mcp-servers/`） |
 | 顶层 `configs/clusters.yaml` | `agents/langgraph-integration/configs/tenants.example.yaml` | 多集群配置 | **仅 mock/示例** |
 
@@ -214,7 +215,7 @@
 1. LangGraph **持久化 checkpoint** 调研（官方 Postgres）— 见 [ROADMAP.md](ROADMAP.md) W8+ Checkpoint Phase 2。
 2. **结构化配置**：`configs/clusters.yaml` 驱动 sync cron 多实例（替代多份 env）。
 3. UI / inspect **集成测试**（mock LangGraph SDK）。
-4. ~~**清理** demo 脚本目录或移到 `examples/`~~ ✅ 已迁至 `scripts/demo/`
+4. ~~**清理** demo 脚本目录或移到 `examples/`~~ ✅ 已迁至 `scripts/demo/`；W5 Skills 见 [`skills/`](../skills/)
 
 ---
 

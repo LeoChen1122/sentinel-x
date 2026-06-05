@@ -8,7 +8,7 @@ from agent.diagnose import diagnose_from_gather
 from agent.execute import execute_recommended_actions
 from agent.gather import gather_subgraph
 from agent.llm import polish_inspection_report, resolve_use_llm
-from agent.narrative import build_report_template
+from agent.narrative import _append_skill_matches, build_report_template
 from agent.types import (
     DiagnosisReport,
     ExecutionResult,
@@ -183,17 +183,6 @@ def build_inspection_with_diagnosis(
             _error_execution("gather", exc, dry_run=dry_run),
         )
 
-    try:
-        narrative_template = build_report_template(gather_out)
-    except Exception as exc:
-        if on_error == "raise":
-            raise InspectPipelineError("narrative", exc) from exc
-        return (
-            _error_narrative(scope, "narrative", exc),
-            _error_diagnosis(scope, "narrative", exc),
-            _error_execution("narrative", exc, dry_run=dry_run),
-        )
-
     diagnosis_out = _run_stage(
         "diagnose",
         on_error,
@@ -203,15 +192,34 @@ def build_inspection_with_diagnosis(
     )
     if isinstance(diagnosis_out, BaseException):
         exc = diagnosis_out
-        partial_narrative = InspectionReport(
-            **_normalize_stage_output(dict(narrative_template))
-        )
         return (
-            partial_narrative,
+            _error_narrative(scope, "diagnose", exc),
             _error_diagnosis(scope, "diagnose", exc),
             _error_execution("diagnose", exc, dry_run=dry_run),
         )
     diagnosis = DiagnosisReport(**_normalize_stage_output(dict(diagnosis_out)))
+
+    skill_matches = []
+    if diagnosis.get("issues"):
+        from skills.retrieve import retrieve_for_diagnosis
+
+        skill_matches = retrieve_for_diagnosis(diagnosis)
+
+    try:
+        if resolve_use_llm(use_llm):
+            narrative_template = build_report_template(gather_out, skill_matches=None)
+        else:
+            narrative_template = build_report_template(
+                gather_out, skill_matches=skill_matches
+            )
+    except Exception as exc:
+        if on_error == "raise":
+            raise InspectPipelineError("narrative", exc) from exc
+        return (
+            _error_narrative(scope, "narrative", exc),
+            diagnosis,
+            _error_execution("narrative", exc, dry_run=dry_run),
+        )
 
     if resolve_use_llm(use_llm):
         narrative_out = _run_stage(
@@ -230,6 +238,7 @@ def build_inspection_with_diagnosis(
                 _error_execution("narrative", exc, dry_run=dry_run),
             )
         narrative = InspectionReport(**_normalize_stage_output(dict(narrative_out)))
+        narrative = _append_skill_matches(narrative, skill_matches or None)
     else:
         narrative = InspectionReport(**_normalize_stage_output(dict(narrative_template)))
 

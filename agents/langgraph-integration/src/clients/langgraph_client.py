@@ -166,7 +166,15 @@ def _chunk_data(chunk: Any) -> Any:
     return getattr(chunk, "data", chunk)
 
 
-_INSPECT_OUTPUT_KEYS = frozenset({"gather", "narrative", "diagnosis", "execution"})
+_INSPECT_OUTPUT_KEYS = frozenset({
+    "gather",
+    "narrative",
+    "diagnosis",
+    "execution",
+    "skill_matches",
+    "skill_record",
+    "skill_verification",
+})
 
 
 def _payload_from_chunk_data(data: dict[str, Any]) -> dict[str, Any] | None:

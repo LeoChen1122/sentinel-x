@@ -19,8 +19,8 @@
 | Prom metrics in graph (W3) | **Live** | `scripts/live/mcp_prom_sync_live.py`, `top_pods_by_cpu` |
 | FastAPI `apps/api` | Planned (W7) | — |
 | Root `docker-compose.yml` | Planned | — |
+| `skills/` storage + FTS retrieval (W5) | **Live** | `skills/`, `agents/langgraph-integration/src/skills/` |
 | `sandbox/` pre-run | Planned (W6) | — |
-| `skills/` storage | Planned (W5) | — |
 
 详细周计划与进度：**[docs/ROADMAP.md](docs/ROADMAP.md)**
 
@@ -37,12 +37,13 @@ sentinel-x/
 ├── apps/
 │   └── ui/                      # Streamlit minimal UI (W4)
 ├── mcp-servers/                 # k8s/, prometheus/, compose/, images/
+├── skills/                      # Markdown skills + SQLite FTS index (W5)
 ├── deploy/                      # install/, config/, sync/, systemd/, prometheus/, verify/
 ├── docs/                        # ROADMAP, deploy/, weekly/
 └── dist/                        # Offline helm bundles (kube-prometheus)
 ```
 
-**Planned (not in repo yet):** `apps/api/`, `sandbox/`, `skills/`, root `docker-compose.yml`, top-level `configs/`.
+**Planned (not in repo yet):** `apps/api/`, `sandbox/`, root `docker-compose.yml`, top-level `configs/`.
 
 ---
 
@@ -99,28 +100,42 @@ See also [agents/langgraph-integration/README.md](agents/langgraph-integration/R
 | Rule-based diagnose + narrative | Live inspect (template; LLM optional) |
 | Simulated execute (restart_pod, etc.) | Dry-run only |
 | Sandbox pre-run | Not implemented |
-| Skills retrieval | Not implemented |
+| Skills retrieval | Live (SQLite FTS5) |
 | Streamlit dashboard | Minimal (pods / top CPU / inspect) |
 
 ---
 
-## Skill template (planned W5)
+## Skill template (W5)
+
+General knowledge in frontmatter; cluster/namespace/pod only in **Evidence** body. See [`skills/TEMPLATE.md`](skills/TEMPLATE.md).
 
 ```markdown
 ---
-name: fix-pod-oom
+name: fix-crashloop-restart
 version: 1.0
-tags: [k8s, oom, memory, restart]
-symptom: Pod is terminated with exit code 137
-risk_level: medium
+fingerprint: <sha256 sorted issues|actions>
+tags: [k8s, CrashLoop]
+symptom: CrashLoopBackOff
+issues: [CrashLoop]
+recommended_actions: [restart_pod]
+risk_level: critical
+verified: false
+hit_count: 1
+source_count: 1
 ---
 
 # Problem
-Pod repeated restart due to OOMKilled.
+Pod enters CrashLoopBackOff with container restart loop.
 
 # Resolution
-1. Increase memory limit
-2. Restart deployment
+1. Review logs
+2. restart_pod
+
+# Evidence
+Observed on:
+- cluster: dev-cluster
+- namespace: default
+- pod: crash-pod
 ```
 
 ---

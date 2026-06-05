@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _SERVER_SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SERVER_SRC) not in sys.path:
     sys.path.insert(0, str(_SERVER_SRC))
 
-from graph import ingest, query  # noqa: E402
+from graph import ingest, query, retrieve_skills  # noqa: E402
 
 
 def _sample_pod_entity(
@@ -78,6 +80,38 @@ class TestGraphNodes(unittest.TestCase):
         qr = out["payload"]["query_result"]
         self.assertEqual(qr["count"], 1)
         self.assertEqual(qr["pods"][0]["name"], "high")
+
+    def test_retrieve_skills_node(self) -> None:
+        diagnosis = {
+            "cluster_id": "dev-cluster",
+            "namespace": "default",
+            "pod_name": "crash-pod",
+            "pod_id": "pod:dev-cluster:default:crash-pod",
+            "issues": ["CrashLoop"],
+            "recommended_actions": ["restart_pod"],
+            "severity": "critical",
+            "diagnosis_source": "rules_v1",
+            "ok": True,
+        }
+        fake_match = {
+            "name": "fix-crashloop-restart",
+            "symptom": "CrashLoopBackOff",
+            "summary": "Pod enters CrashLoopBackOff",
+            "fingerprint": "5305d707b43e48f6",
+            "path": "/tmp/skill.md",
+            "score": -1.0,
+            "hit_count": 1,
+            "source_count": 1,
+            "verified": False,
+        }
+        with mock.patch(
+            "skills.retrieve.retrieve_for_diagnosis",
+            return_value=[fake_match],
+        ):
+            out = retrieve_skills({"payload": {"diagnosis": diagnosis}})
+        matches = out["payload"].get("skill_matches") or []
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0]["name"], "fix-crashloop-restart")
 
 
 if __name__ == "__main__":

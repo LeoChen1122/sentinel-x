@@ -21,6 +21,19 @@
 
 ---
 
+## Skills ???W5?
+
+| ?? | ?? | ?? |
+|------|------|------|
+| `SENTINEL_SKILLS_DIR` | `{SENTINEL_ROOT}/skills` | Markdown ????? |
+| `SENTINEL_SKILLS_DB` | `{SENTINEL_SKILLS_DIR}/.index/skills.db` | SQLite FTS ?? |
+| `SENTINEL_SKILLS_RECORD` | `1` | `0` ?? inspect ????? |
+| `SENTINEL_SKILLS_SEARCH_LIMIT` | `3` | ?????? |
+
+?? [`skills/README.md`](../../skills/README.md)?
+
+---
+
 ## Checkpoint ??
 
 LangGraph ?? **`langgraph dev` ?? checkpoint**?? Postgres??

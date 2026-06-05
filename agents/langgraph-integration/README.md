@@ -28,7 +28,8 @@ Related package: [`../langgraph-server`](../langgraph-server) — run with `lang
 | `src/testing/` | Multicluster MCP mocks (`multicluster_fixtures.py`, phase 4-0) |
 | `tests/` | Unit tests (no live LangGraph required for most cases) |
 | `scripts/live/` | Production cron entry points (`mcp_k8s_sync_live.py`, `mcp_prom_sync_live.py`) |
-| `scripts/demo/` | Dev demos and smoke tests (`*_demo.py`, `smoke_local_langgraph.py`) |
+| `scripts/demo/` | Dev demos and smoke tests (`*_demo.py`, `skill_write_demo.py`) |
+| `src/skills/` | W5 Skills: FTS store, writer, retrieve (see [`skills/README.md`](../../skills/README.md)) |
 
 ## Development
 
@@ -247,15 +248,18 @@ python scripts\full_pipeline_demo.py --live --thread-id step8-demo
 
 ## Agent phase A: inspection narrative (mock, no LLM)
 
-Graph flow: `ingest → gather → diagnose → narrate → execute → query → END` ([`langgraph-server/src/graph.py`](../langgraph-server/src/graph.py)).
+Graph flow (W5): `ingest → gather → diagnose → retrieve_skills → narrate → execute → verify_skill → record_skill → query → END` ([`langgraph-server/src/graph.py`](../langgraph-server/src/graph.py)).
 
 | `payload` field | Role |
 |-----------------|------|
 | `inspect` | `{cluster_id, namespace, pod_name}` — triggers gather/narrate |
 | `gather` | Subgraph + `run_query` facts |
-| `narrative` | `InspectionReport` (markdown, sections, linked_events/pods) |
 | `diagnosis` | `DiagnosisReport` (rules_v1: issues, recommended_actions, severity) |
+| `skill_matches` | Top-N similar past skills (FTS + synonym query) |
+| `narrative` | `InspectionReport` (markdown, sections, linked_events/pods) |
 | `execution` | `ExecutionResult` (dry-run simulated actions by default) |
+| `skill_verification` | W5 stub: `{ verified: false, reason: "w5_dry_run_only" }` |
+| `skill_record` | Upsert result (fingerprint, path, hit_count) |
 | `query` | Optional legacy `run_query` (step 6) |
 
 ```python
@@ -290,7 +294,7 @@ Polishes `markdown` and `summary` via **OpenAI-compatible API** (DashScope / 百
 | `SENTINEL_LLM_ENABLE_THINKING` | `0` | `1` = stream + thinking (not for production narrative) |
 | `SENTINEL_LLM_TIMEOUT_SEC` | `60` | HTTP timeout |
 
-Pipeline: `gather → template → diagnose → LLM polish (optional) → execute`. LangGraph: `gather → diagnose → narrate` so `narrate` sees `payload.diagnosis`.
+Pipeline: `gather → diagnose → retrieve_skills → template → LLM polish (optional) → execute → verify_skill → record_skill`. LangGraph: `gather → diagnose → retrieve_skills → narrate` so `narrate` sees `payload.diagnosis` and `payload.skill_matches`.
 
 ```python
 from agent import build_inspection_with_diagnosis, llm_narrative_config
@@ -375,7 +379,8 @@ Fixture: `tenant_acl_matrix_batch()` — four cells (alpha/beta × dev/prod) in 
 
 | Piece | Role |
 |-------|------|
-| [`get_inspect_outputs_from_stream`](src/clients/langgraph_client.py) | Read ``gather`` / ``narrative`` / ``diagnosis`` / ``execution`` from stream |
+| [`get_inspect_outputs_from_stream`](src/clients/langgraph_client.py) | Read ``gather`` / ``narrative`` / ``diagnosis`` / ``execution`` / ``skill_*`` from stream |
+| [`src/skills/`](src/skills/) | W5: SQLite FTS retrieval + skill writer; ``retrieve_skills`` → ``record_skill`` graph nodes |
 | [`agent/actions/`](src/agent/actions/) | ``ActionHandler`` registry; built-ins simulated; unknown → ``skipped`` |
 | [`execute.py`](src/agent/execute.py) | ``execution_source=registry_v1``; tenant ACL at execute via ``validate_execution_policy`` |
 
@@ -389,6 +394,33 @@ python -m unittest tests.test_langgraph_inspect_live tests.test_agent_diagnose -
 ```
 
 Live K8s writes remain **off** unless ``SENTINEL_EXECUTE_LIVE=1`` and handlers are wired (phase 4-0b / Action MCP).
+
+## W5 Skills (retrieve + record)
+
+SQLite FTS5 store under repo [`skills/`](../../skills/). Graph layer uses ``SkillStore`` Protocol — swap to Chroma/PGVector later without changing nodes.
+
+| Module | Role |
+|--------|------|
+| [`src/skills/store.py`](src/skills/store.py) | ``SqliteFtsSkillStore``: index, search, fingerprint dedup |
+| [`src/skills/retrieve.py`](src/skills/retrieve.py) | ``ISSUE_SYNONYMS``, ``build_search_query``, ``retrieve_for_diagnosis`` |
+| [`src/skills/writer.py`](src/skills/writer.py) | ``build_skill_markdown`` — frontmatter = general knowledge; Evidence = pod context |
+| [`src/skills/fingerprint.py`](src/skills/fingerprint.py) | Sorted issues/actions → 16-char sha256 |
+
+| Env | Default | Purpose |
+|-----|---------|---------|
+| `SENTINEL_SKILLS_DIR` | `{repo}/skills` | Markdown root |
+| `SENTINEL_SKILLS_DB` | `{dir}/.index/skills.db` | FTS index |
+| `SENTINEL_SKILLS_RECORD` | `1` | `0` disables auto-write after inspect |
+| `SENTINEL_SKILLS_SEARCH_LIMIT` | `3` | Top-N matches (deduped by fingerprint) |
+
+Narrative adds ``## Similar past skills`` when matches exist. Second inspect on the same CrashLoop scenario should surface the seed example or a prior record.
+
+```powershell
+python scripts\demo\skill_write_demo.py
+python -m unittest tests.test_skills_store tests.test_skills_fingerprint tests.test_skills_writer tests.test_skills_retrieve_integration -v
+```
+
+See also [`skills/README.md`](../../skills/README.md) and [`docs/deploy/DEPLOY-REFERENCE.md`](../../docs/deploy/DEPLOY-REFERENCE.md#skills-环境w5).
 
 ## Agent phase D/E: diagnosis + execute stub
 

@@ -1,1 +1,3 @@
 agents/langgraph-server/.env
+skills/.index/
+skills/records/*.md
