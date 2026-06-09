@@ -171,6 +171,7 @@ _INSPECT_OUTPUT_KEYS = frozenset({
     "narrative",
     "diagnosis",
     "execution",
+    "sandbox_result",
     "skill_matches",
     "skill_record",
     "skill_verification",

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SRC) not in sys.path:
@@ -149,7 +150,7 @@ class TestDiagnoseRules(unittest.TestCase):
         self.assertEqual(result["error_stage"], "execute_policy")
         self.assertEqual(result["actions_taken"], [])
 
-    def test_execute_live_without_flag_raises(self) -> None:
+    def test_execute_sandbox_pending_without_live(self) -> None:
         g = gather_subgraph(
             self.payload,
             cluster_id=CLUSTER_DEV,
@@ -157,8 +158,22 @@ class TestDiagnoseRules(unittest.TestCase):
             pod_name="crash-pod",
         )
         diag = diagnose_from_gather(g)
-        with self.assertRaises(NotImplementedError):
-            execute_recommended_actions(diag, dry_run=False)
+        result = execute_recommended_actions(diag, dry_run=False)
+        self.assertTrue(result.get("sandbox_pending"))
+        self.assertFalse(result.get("dry_run"))
+        self.assertTrue(result["actions_taken"])
+
+    def test_execute_live_flag_raises_not_implemented(self) -> None:
+        g = gather_subgraph(
+            self.payload,
+            cluster_id=CLUSTER_DEV,
+            namespace="default",
+            pod_name="crash-pod",
+        )
+        diag = diagnose_from_gather(g)
+        with mock.patch.dict("os.environ", {"SENTINEL_EXECUTE_LIVE": "1"}):
+            with self.assertRaises(NotImplementedError):
+                execute_recommended_actions(diag, dry_run=False)
 
 
 class TestDiagnoseOrchestration(unittest.TestCase):

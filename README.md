@@ -20,7 +20,7 @@
 | FastAPI `apps/api` | Planned (W7) | — |
 | Root `docker-compose.yml` | Planned | — |
 | `skills/` storage + FTS retrieval (W5) | **Live** | `skills/`, `agents/langgraph-integration/src/skills/` |
-| `sandbox/` pre-run | Planned (W6) | — |
+| `sandbox/` pre-run (W6) | **Live** (Docker + namespace policy) | `sandbox/`, `src/sandbox/` |
 
 详细周计划与进度：**[docs/ROADMAP.md](docs/ROADMAP.md)**
 
@@ -38,12 +38,13 @@ sentinel-x/
 │   └── ui/                      # Streamlit minimal UI (W4)
 ├── mcp-servers/                 # k8s/, prometheus/, compose/, images/
 ├── skills/                      # Markdown skills + SQLite FTS index (W5)
+├── sandbox/                     # Docker kubectl executor + audit (W6)
 ├── deploy/                      # install/, config/, sync/, systemd/, prometheus/, verify/
 ├── docs/                        # ROADMAP, deploy/, weekly/
 └── dist/                        # Offline helm bundles (kube-prometheus)
 ```
 
-**Planned (not in repo yet):** `apps/api/`, `sandbox/`, root `docker-compose.yml`, top-level `configs/`.
+**Planned (not in repo yet):** `apps/api/`, root `docker-compose.yml`, top-level `configs/`.
 
 ---
 
@@ -99,7 +100,7 @@ See also [agents/langgraph-integration/README.md](agents/langgraph-integration/R
 | MCP query (Pod, Event, CPU/memory) | Live via LangGraph thread |
 | Rule-based diagnose + narrative | Live inspect (template; LLM optional) |
 | Simulated execute (restart_pod, etc.) | Dry-run only |
-| Sandbox pre-run | Not implemented |
+| Sandbox pre-run | Live (`sentinel-sandbox` ns only) |
 | Skills retrieval | Live (SQLite FTS5) |
 | Streamlit dashboard | Minimal (pods / top CPU / inspect) |
 
@@ -143,8 +144,8 @@ Observed on:
 ## Security policy
 
 1. **Read-only mode** (default): metrics / events / graph query  
-2. **Sandbox mode** (planned): risky commands in isolated container  
-3. **Production execute** (planned): live K8s writes with approval  
+2. **Sandbox mode** (W6): `dry_run=false` runs whitelisted kubectl in Docker; only `sentinel-sandbox` namespace  
+3. **Production execute** (W8+): `SENTINEL_EXECUTE_LIVE=1` — not implemented  
 
 Default deny: delete namespace, bulk cleanup, arbitrary shell, non-whitelisted kubectl.
 

@@ -36,7 +36,7 @@ skills/
 | `fingerprint` | `sha256(sorted_issues\|sorted_actions)[:16]` |
 | `hit_count` | Total upsert/reference count |
 | `source_count` | Distinct Evidence sources (W5: placeholder; W5+ pod dedup) |
-| `verified` | `false` until sandbox/manual confirmation (W6+) |
+| `verified` | `true` only when sandbox verification passes (Ready held ≥ `SENTINEL_SANDBOX_READY_SEC`, default 30s); else `false` |
 
 ## Retrieval
 

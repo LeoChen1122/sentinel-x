@@ -25,10 +25,10 @@ def execute_recommended_actions(
     ctx = context or action_context_from_diagnosis(diagnosis)
     live = _live_execute_enabled()
 
-    if not dry_run and not live:
+    if not dry_run and live:
         raise NotImplementedError(
-            "Live action execution is disabled. Set SENTINEL_EXECUTE_LIVE=1 "
-            "when real APIs are wired (not implemented in phase F)."
+            "Live production execution is not implemented (W8+). "
+            "Unset SENTINEL_EXECUTE_LIVE or use dry_run=true."
         )
 
     try:
@@ -36,6 +36,7 @@ def execute_recommended_actions(
     except Exception as exc:
         return ExecutionResult(
             dry_run=dry_run or not live,
+            sandbox_pending=False,
             actions_taken=[],
             skipped=[],
             ok=False,
@@ -48,6 +49,7 @@ def execute_recommended_actions(
     if not actions:
         return ExecutionResult(
             dry_run=dry_run or not live,
+            sandbox_pending=False,
             actions_taken=[],
             skipped=[],
             ok=True,
@@ -56,19 +58,34 @@ def execute_recommended_actions(
             execution_source=_EXECUTION_SOURCE,
         )
 
+    # W6: dry_run=false without live → queue sandbox (no production writes)
+    sandbox_pending = not dry_run and not live
+
     actions_taken: list[ActionRecord] = []
     skipped: list[str] = []
 
-    for action in actions:
-        handler = resolve_handler(action)
-        record = handler.run(action, ctx, dry_run=dry_run, live=live)
-        if record is None:
-            skipped.append(action)
-        else:
-            actions_taken.append(record)
+    if sandbox_pending:
+        for action in actions:
+            actions_taken.append(
+                ActionRecord(
+                    action=action,
+                    target=ctx["pod_id"],
+                    status="sandbox_pending",
+                    message="Queued for sandbox pre-run",
+                )
+            )
+    else:
+        for action in actions:
+            handler = resolve_handler(action)
+            record = handler.run(action, ctx, dry_run=dry_run, live=live)
+            if record is None:
+                skipped.append(action)
+            else:
+                actions_taken.append(record)
 
     return ExecutionResult(
-        dry_run=dry_run or not live,
+        dry_run=False if sandbox_pending else dry_run,
+        sandbox_pending=sandbox_pending,
         actions_taken=actions_taken,
         skipped=skipped,
         ok=True,

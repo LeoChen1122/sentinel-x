@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sentinel-sandbox
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crash-demo
+  namespace: sentinel-sandbox
+  labels:
+    app: crash-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crash-demo
+  template:
+    metadata:
+      labels:
+        app: crash-demo
+    spec:
+      containers:
+        - name: crash
+          image: busybox:1.36
+          command: ["sh", "-c", "exit 1"]

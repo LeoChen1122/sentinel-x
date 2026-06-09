@@ -8,7 +8,7 @@ from agent.diagnose import diagnose_from_gather
 from agent.execute import execute_recommended_actions
 from agent.gather import gather_subgraph
 from agent.llm import polish_inspection_report, resolve_use_llm
-from agent.narrative import _append_skill_matches, build_report_template
+from agent.narrative import _append_skill_matches, append_sandbox_result, build_report_template
 from agent.types import (
     DiagnosisReport,
     ExecutionResult,
@@ -260,6 +260,15 @@ def build_inspection_with_diagnosis(
     execution.setdefault("ok", True)
     execution.setdefault("error", None)
     execution.setdefault("error_stage", None)
+
+    if execution.get("sandbox_pending"):
+        from agent.actions.policy import action_context_from_diagnosis
+        from sandbox.runner import run_sandbox_for_execution, sandbox_result_to_dict
+
+        ctx = action_context_from_diagnosis(diagnosis)
+        sandbox = sandbox_result_to_dict(run_sandbox_for_execution(execution, ctx))
+        narrative = append_sandbox_result(narrative, sandbox)
+
     return narrative, diagnosis, execution
 
 

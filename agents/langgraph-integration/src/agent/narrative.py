@@ -73,6 +73,40 @@ def _append_skill_matches(
     return InspectionReport(**updated)
 
 
+def append_sandbox_result(
+    report: InspectionReport,
+    sandbox_result: dict[str, Any] | None,
+) -> InspectionReport:
+    """Append sandbox kubectl output summary (local inspect path; graph uses payload)."""
+    if not sandbox_result or sandbox_result.get("skipped"):
+        return report
+    runs = sandbox_result.get("runs") or []
+    if not runs:
+        return report
+    lines: list[str] = []
+    for run in runs:
+        action = str(run.get("action", ""))
+        status = str(run.get("status", ""))
+        out = (str(run.get("stdout") or "").strip().split("\n")[0]) or status
+        lines.append(f"- **{action}**: {out}")
+    ver = sandbox_result.get("verification")
+    if isinstance(ver, dict) and ver.get("message"):
+        lines.append(f"- verification: {ver.get('message')}")
+    body = "\n".join(lines)
+    section = ReportSection(
+        title="Sandbox result",
+        body=body,
+        linked_entities=[],
+    )
+    sections = list(report.get("sections") or [])
+    sections.append(section)
+    md = (report.get("markdown") or "").rstrip() + "\n\n## Sandbox result\n\n" + body + "\n"
+    updated = dict(report)
+    updated["sections"] = sections
+    updated["markdown"] = md
+    return InspectionReport(**updated)
+
+
 def build_report_template(
     gather: GatherResult,
     *,

@@ -12,7 +12,7 @@ _SERVER_SRC = Path(__file__).resolve().parents[1] / "src"
 if str(_SERVER_SRC) not in sys.path:
     sys.path.insert(0, str(_SERVER_SRC))
 
-from graph import ingest, query, retrieve_skills  # noqa: E402
+from graph import ingest, query, retrieve_skills, sandbox_run, verify_skill  # noqa: E402
 
 
 def _sample_pod_entity(
@@ -112,6 +112,72 @@ class TestGraphNodes(unittest.TestCase):
         matches = out["payload"].get("skill_matches") or []
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0]["name"], "fix-crashloop-restart")
+
+
+    def test_sandbox_run_node_mocked(self) -> None:
+        diagnosis = {
+            "cluster_id": "dev",
+            "namespace": "sentinel-sandbox",
+            "pod_name": "crash-demo-x",
+            "pod_id": "pod:dev:sentinel-sandbox:crash-demo-x",
+            "issues": ["CrashLoop"],
+            "recommended_actions": ["restart_pod"],
+            "severity": "critical",
+            "diagnosis_source": "rules_v1",
+            "ok": True,
+        }
+        execution = {
+            "dry_run": False,
+            "sandbox_pending": True,
+            "actions_taken": [
+                {
+                    "action": "restart_pod",
+                    "target": "pod:dev:sentinel-sandbox:crash-demo-x",
+                    "status": "sandbox_pending",
+                    "message": "q",
+                }
+            ],
+            "skipped": [],
+            "ok": True,
+            "execution_source": "registry_v1",
+        }
+        fake_sandbox = {
+            "runs": [{"action": "restart_pod", "status": "ok", "run_id": "abc"}],
+            "ok": True,
+            "sandbox_source": "docker_v1",
+            "blocked": False,
+            "skipped": False,
+        }
+        with mock.patch(
+            "sandbox.runner.run_sandbox_for_execution",
+            return_value=fake_sandbox,
+        ):
+            out = sandbox_run(
+                {"payload": {"diagnosis": diagnosis, "execution": execution}}
+            )
+        self.assertTrue(out["payload"]["sandbox_result"]["ok"])
+
+    def test_verify_skill_after_sandbox_pass(self) -> None:
+        state = {
+            "payload": {
+                "execution": {"dry_run": False},
+                "sandbox_result": {
+                    "ok": True,
+                    "blocked": False,
+                    "verification": {
+                        "pass": True,
+                        "message": "sandbox_pass",
+                        "ready_seconds": 30,
+                    },
+                    "runs": [{"run_id": "run1", "status": "ok", "stdout": "pod deleted"}],
+                },
+            }
+        }
+        out = verify_skill(state)
+        ver = out["payload"]["skill_verification"]
+        self.assertTrue(ver["verified"])
+        self.assertEqual(ver["reason"], "sandbox_pass")
+        self.assertEqual(ver["audit_run_id"], "run1")
 
 
 if __name__ == "__main__":

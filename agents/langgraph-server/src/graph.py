@@ -181,16 +181,76 @@ def execute(state: State) -> State:
     return {"payload": payload}
 
 
-def verify_skill(state: State) -> State:
-    """W5 stub: mark skill verification false until sandbox/manual ack (W6+)."""
+def sandbox_run(state: State) -> State:
+    """Run kubectl in Docker sandbox when ``execution.sandbox_pending``."""
     payload = dict(state.get("payload") or {})
     raw_execution = payload.get("execution")
+    raw_diagnosis = payload.get("diagnosis")
+    if not isinstance(raw_execution, dict) or not isinstance(raw_diagnosis, dict):
+        return {"payload": payload}
+    from agent.actions.policy import action_context_from_diagnosis  # noqa: E402
+    from agent.types import DiagnosisReport, ExecutionResult  # noqa: E402
+    from sandbox.runner import run_sandbox_for_execution  # noqa: E402
+
+    diagnosis = DiagnosisReport(**raw_diagnosis)
+    execution = ExecutionResult(**raw_execution)
+    ctx = action_context_from_diagnosis(diagnosis)
+    from sandbox.runner import sandbox_result_to_dict  # noqa: E402
+
+    result = run_sandbox_for_execution(execution, ctx)
+    payload["sandbox_result"] = sandbox_result_to_dict(result)
+    return {"payload": payload}
+
+
+def verify_skill(state: State) -> State:
+    """Set skill verification from sandbox result (W6)."""
+    payload = dict(state.get("payload") or {})
+    raw_execution = payload.get("execution")
+    raw_sandbox = payload.get("sandbox_result")
     dry_run = True
     if isinstance(raw_execution, dict):
         dry_run = bool(raw_execution.get("dry_run", True))
+
+    verified = False
+    reason = "dry_run_only"
+    audit_run_id = ""
+
+    if not dry_run:
+        if not isinstance(raw_sandbox, dict):
+            reason = "sandbox_missing"
+        elif raw_sandbox.get("skipped"):
+            reason = str(raw_sandbox.get("message") or "sandbox_skipped")
+        elif raw_sandbox.get("blocked"):
+            reason = "sandbox_blocked"
+        elif raw_sandbox.get("ok"):
+            ver = raw_sandbox.get("verification")
+            if isinstance(ver, dict) and "pass" in ver:
+                if ver.get("pass"):
+                    verified = True
+                    reason = "sandbox_pass"
+                else:
+                    verified = False
+                    reason = str(ver.get("message") or "sandbox_failed")
+            else:
+                verified = True
+                reason = "sandbox_pass"
+        else:
+            ver = raw_sandbox.get("verification") if isinstance(raw_sandbox, dict) else None
+            if isinstance(ver, dict) and ver.get("message"):
+                reason = str(ver.get("message"))
+            else:
+                reason = "sandbox_failed"
+
+        runs = raw_sandbox.get("runs") if isinstance(raw_sandbox, dict) else None
+        if isinstance(runs, list) and runs:
+            first = runs[0]
+            if isinstance(first, dict):
+                audit_run_id = str(first.get("run_id") or "")
+
     payload["skill_verification"] = {
-        "verified": False,
-        "reason": "w5_dry_run_only" if dry_run else "w5_unverified",
+        "verified": verified,
+        "reason": reason,
+        "audit_run_id": audit_run_id,
     }
     return {"payload": payload}
 
@@ -246,6 +306,7 @@ builder.add_node("narrate", narrate)
 builder.add_node("diagnose", diagnose)
 builder.add_node("retrieve_skills", retrieve_skills)
 builder.add_node("execute", execute)
+builder.add_node("sandbox_run", sandbox_run)
 builder.add_node("verify_skill", verify_skill)
 builder.add_node("record_skill", record_skill)
 builder.add_node("query", query)
@@ -255,7 +316,8 @@ builder.add_edge("gather", "diagnose")
 builder.add_edge("diagnose", "retrieve_skills")
 builder.add_edge("retrieve_skills", "narrate")
 builder.add_edge("narrate", "execute")
-builder.add_edge("execute", "verify_skill")
+builder.add_edge("execute", "sandbox_run")
+builder.add_edge("sandbox_run", "verify_skill")
 builder.add_edge("verify_skill", "record_skill")
 builder.add_edge("record_skill", "query")
 builder.add_edge("query", END)

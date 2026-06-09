@@ -3,8 +3,8 @@
 > 本文档为 **主路线图**：概括当前进度、按优先级排列的后续周计划，以及每周总结的索引。  
 > 每周结束后在 [`docs/weekly/`](weekly/) 新增一份周总结，并回链到本文档对应周次。
 
-**最后更新**：2026-06-04  
-**当前阶段**：W4 最小 UI + 部署文档（**live 验收完成**）
+**最后更新**：2026-06-05  
+**当前阶段**：W6 沙箱预演（**代码验收**）；W5 Skills 已完成
 
 ---
 
@@ -25,7 +25,7 @@
 | Phase 3 | LangGraph 集成（第三版） | Adapter / Sync / Query 数据面 | 代码 90%，live 75% |
 | Phase 4 | 多集群（第四版） | cluster_id / tenant 隔离 | mock 100%，live 0% |
 | Phase 5 | Diagnosis / 动作层 | gather → diagnose → execute | 代码 75%，live 20% |
-| MVP 2–5 | 第一版开发方案 | 沙箱 / Skills / Streamlit UI | UI **live 完成**；Skills/沙箱 待开始 |
+| MVP 2–5 | 第一版开发方案 | 沙箱 / Skills / Streamlit UI | UI **live**；Skills **live**；沙箱 **W6 代码完成** |
 
 ---
 
@@ -41,7 +41,7 @@
 | Sync 管道 | 增量、重试、分块；`sync_pod_metrics_resilient` | `src/sync/` |
 | **Prom → 图** | `mcp_prom.py` + `mcp_prom_sync_live.py`；Pod `cpu_cores` / `memory_bytes` | `src/clients/mcp_prom.py`，[DEPLOY-PROM-SYNC.md](deploy/DEPLOY-PROM-SYNC.md) |
 | Query | `list_pods`、`pod_status`、`events_for_pod`、`top_pods_by_cpu`、`pod_metrics` 等 | `src/query/` |
-| LangGraph 图 | ingest → gather → diagnose → narrate → execute → query | `agents/langgraph-server/src/graph.py` |
+| LangGraph 图 | ingest → gather → diagnose → retrieve → narrate → execute → sandbox → verify → record → query | `agents/langgraph-server/src/graph.py` |
 | Agent | 规则诊断、模板/LLM 叙事、动作注册表（模拟） | `src/agent/` |
 | 单测 | ~180+ 用例 | `agents/langgraph-integration/tests/` |
 | **服务器 live** | k3s 离线恢复；MCP kubeconfig 宿主机 IP；sync 成功 | 7 pods / 65 events → 66 entities |
@@ -54,14 +54,14 @@
 
 - W2-4 可选 LLM（DashScope timeout）
 - W3 可选 Prom cron（`sentinel-sync-prom.sh`）
-- W5 Skills 基础
+- W6 沙箱 live 验收（需 `sentinel-sandbox` fixture + Docker 镜像）
 
 ### 3.3 未开始（按 MVP 愿景）
 
 - `apps/api` — planned（W7 可选）
-- Skills 存储与检索（Markdown + Chroma）
-- Docker / gVisor 沙箱预演
-- Live K8s 写操作（restart_pod 等）
+- Chroma / embedding Skills 后端
+- gVisor 沙箱（W6 用 Docker + namespace 策略）
+- Live K8s 写操作（`SENTINEL_EXECUTE_LIVE=1`，W8+）
 - 多集群 live（`configs/clusters.yaml`）
 
 ### 3.4 架构现状
@@ -194,18 +194,18 @@ sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespac
 
 ---
 
-### W6 — P3：沙箱预演（「试」）
+### W6 — P3：沙箱预演（「试」）— **代码已完成**
 
 **目标**：修复命令不进生产，先进受限容器。
 
-| 序号 | 任务 | 产出 / 验收 |
-|------|------|-------------|
-| W6-1 | `sandbox/` 模块 | Docker 受限执行 kubectl 子集 |
-| W6-2 | planner + sandbox_verifier | LangGraph 或 integration 编排 |
-| W6-3 | 审计日志 | 命令、stdout、exit code 落盘 |
-| W6-4 | 与 execute 衔接 | dry_run=false 仍只进沙箱，不触生产 |
+| 序号 | 任务 | 产出 / 验收 | 状态 |
+|------|------|-------------|------|
+| W6-1 | `sandbox/` 模块 | Docker 受限执行 kubectl 子集 | ✅ |
+| W6-2 | planner + verifier | `src/sandbox/` + `sandbox_run` 图节点 | ✅ |
+| W6-3 | 审计日志 | `sandbox/audit/*.jsonl` | ✅ |
+| W6-4 | 与 execute 衔接 | `dry_run=false` → 沙箱；生产 ns block | ✅ |
 
-**W6 完成标准**：restart/scale 类命令在沙箱跑通并出审计记录。
+**W6 完成标准**：restart/scale 在 `sentinel-sandbox` 跑通并出审计；`verify_skill` → `verified: true`。**单测已覆盖**；live 见 [`sandbox/README.md`](../sandbox/README.md)。
 
 ---
 
@@ -261,7 +261,7 @@ sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespac
 | W3 | [2026-W22.md](weekly/2026-W22.md) §6 | Prometheus 进图 | **已完成** → [DEPLOY-PROM-SYNC.md](deploy/DEPLOY-PROM-SYNC.md) |
 | W4 | [2026-W22.md](weekly/2026-W22.md) §7 | UI + 部署文档 | **已完成** → [DEPLOY-UI-LIVE.md](deploy/DEPLOY-UI-LIVE.md) |
 | W5 | — | Skills | **已完成** → [`skills/README.md`](../skills/README.md) |
-| W6 | — | 沙箱 | 待开始 |
+| W6 | [2026-W23.md](weekly/2026-W23.md) | 沙箱预演 | **代码完成** → [`sandbox/README.md`](../sandbox/README.md) |
 | W7 | — | 告警 + 半自动闭环 | 待开始 |
 
 ---

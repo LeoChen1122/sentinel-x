@@ -104,9 +104,47 @@ class ExecutionResult(TypedDict, total=False):
     """Action layer output (``payload.execution``)."""
 
     dry_run: bool
+    sandbox_pending: bool
     actions_taken: list[ActionRecord]
     skipped: list[str]
     ok: bool
     error: str | None
     error_stage: str | None
     execution_source: str
+
+
+class SandboxRunRecord(TypedDict, total=False):
+    """One sandbox kubectl run with audit metadata."""
+
+    action: str
+    command: list[str]
+    exit_code: int
+    status: str
+    message: str
+    audit_path: str
+    run_id: str
+    blocked: bool
+    stdout: str
+    stderr: str
+
+
+class SandboxVerification(TypedDict, total=False):
+    """Post-run verification (e.g. Ready held for N seconds)."""
+
+    pass_: bool
+    ready_seconds: int
+    message: str
+    deployment: str
+    checked_pod: str
+
+
+class SandboxResult(TypedDict, total=False):
+    """Sandbox pre-run output (``payload.sandbox_result``)."""
+
+    runs: list[SandboxRunRecord]
+    ok: bool
+    sandbox_source: str
+    blocked: bool
+    skipped: bool
+    message: str
+    verification: SandboxVerification

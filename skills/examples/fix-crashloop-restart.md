@@ -8,10 +8,10 @@ issues: [CrashLoop]
 recommended_actions: [restart_pod]
 risk_level: critical
 verified: false
-hit_count: 3
-source_count: 3
-created_at: 2026-06-05T03:09:55Z
-updated_at: 2026-06-05T03:09:55Z
+hit_count: 6
+source_count: 6
+created_at: 2026-06-09T01:42:03Z
+updated_at: 2026-06-09T01:42:03Z
 ---
 
 # Problem

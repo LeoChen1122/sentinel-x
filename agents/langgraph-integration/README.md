@@ -248,7 +248,7 @@ python scripts\full_pipeline_demo.py --live --thread-id step8-demo
 
 ## Agent phase A: inspection narrative (mock, no LLM)
 
-Graph flow (W5): `ingest → gather → diagnose → retrieve_skills → narrate → execute → verify_skill → record_skill → query → END` ([`langgraph-server/src/graph.py`](../langgraph-server/src/graph.py)).
+Graph flow (W6): `ingest → gather → diagnose → retrieve_skills → narrate → execute → sandbox_run → verify_skill → record_skill → query → END` ([`langgraph-server/src/graph.py`](../langgraph-server/src/graph.py)).
 
 | `payload` field | Role |
 |-----------------|------|
@@ -257,8 +257,9 @@ Graph flow (W5): `ingest → gather → diagnose → retrieve_skills → narrate
 | `diagnosis` | `DiagnosisReport` (rules_v1: issues, recommended_actions, severity) |
 | `skill_matches` | Top-N similar past skills (FTS + synonym query) |
 | `narrative` | `InspectionReport` (markdown, sections, linked_events/pods) |
-| `execution` | `ExecutionResult` (dry-run simulated actions by default) |
-| `skill_verification` | W5 stub: `{ verified: false, reason: "w5_dry_run_only" }` |
+| `execution` | `ExecutionResult` (`sandbox_pending` when `dry_run=false`) |
+| `sandbox_result` | Docker kubectl runs + audit paths |
+| `skill_verification` | `{ verified, reason, audit_run_id }` from sandbox |
 | `skill_record` | Upsert result (fingerprint, path, hit_count) |
 | `query` | Optional legacy `run_query` (step 6) |
 
@@ -294,7 +295,7 @@ Polishes `markdown` and `summary` via **OpenAI-compatible API** (DashScope / 百
 | `SENTINEL_LLM_ENABLE_THINKING` | `0` | `1` = stream + thinking (not for production narrative) |
 | `SENTINEL_LLM_TIMEOUT_SEC` | `60` | HTTP timeout |
 
-Pipeline: `gather → diagnose → retrieve_skills → template → LLM polish (optional) → execute → verify_skill → record_skill`. LangGraph: `gather → diagnose → retrieve_skills → narrate` so `narrate` sees `payload.diagnosis` and `payload.skill_matches`.
+Pipeline: `gather → diagnose → retrieve_skills → template → LLM polish (optional) → execute → sandbox_run → verify_skill → record_skill`. LangGraph: `gather → diagnose → retrieve_skills → narrate` so `narrate` sees `payload.diagnosis` and `payload.skill_matches`.
 
 ```python
 from agent import build_inspection_with_diagnosis, llm_narrative_config
@@ -394,6 +395,26 @@ python -m unittest tests.test_langgraph_inspect_live tests.test_agent_diagnose -
 ```
 
 Live K8s writes remain **off** unless ``SENTINEL_EXECUTE_LIVE=1`` and handlers are wired (phase 4-0b / Action MCP).
+
+## W6 Sandbox (pre-run)
+
+Docker + kubectl whitelist; **only** `sentinel-sandbox` namespace (production namespaces → `blocked` + audit).
+
+| Module | Role |
+|--------|------|
+| [`src/sandbox/runner.py`](src/sandbox/runner.py) | `run_sandbox_for_execution` orchestration |
+| [`src/sandbox/planner.py`](src/sandbox/planner.py) | `restart_pod` / `scale_up` → kubectl argv |
+| [`src/sandbox/policy.py`](src/sandbox/policy.py) | Default-deny command validation |
+| [`sandbox/Dockerfile`](../../sandbox/Dockerfile) | Executor image |
+
+```powershell
+docker build -t sentinel-x-sandbox:latest sandbox/
+kubectl apply -f sandbox/fixtures/crash-loop-deployment.yaml
+python scripts\demo\sandbox_demo.py --pod-name crash-demo-xxxxx
+python -m unittest tests.test_sandbox_policy tests.test_sandbox_integration -v
+```
+
+`dry_run=false` without `SENTINEL_EXECUTE_LIVE=1` → sandbox only (never production writes).
 
 ## W5 Skills (retrieve + record)
 
