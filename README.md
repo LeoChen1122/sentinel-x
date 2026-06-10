@@ -16,8 +16,9 @@
 | Deploy scripts + runbooks | **Live** | `deploy/`, `docs/deploy/DEPLOY-*.md` |
 | Streamlit UI (W4) | **Minimal** | `apps/ui/` |
 | Inspect / diagnose E2E | **Live (dry-run)** | `agents/langgraph-integration/scripts/demo/inspect_langgraph_live_demo.py` |
+| Alert patrol + inspect trigger (W7) | **Code complete** (live pending) | `src/trigger/`, `deploy/sync/sentinel-inspect-patrol.sh` |
 | Prom metrics in graph (W3) | **Live** | `scripts/live/mcp_prom_sync_live.py`, `top_pods_by_cpu` |
-| FastAPI `apps/api` | Planned (W7) | — |
+| FastAPI `apps/api` (W7) | **Code complete** (optional `--with-api`) | `apps/api/` |
 | Root `docker-compose.yml` | Planned | — |
 | `skills/` storage + FTS retrieval (W5) | **Live** | `skills/`, `agents/langgraph-integration/src/skills/` |
 | `sandbox/` pre-run (W6) | **Live** (Docker + namespace policy) | `sandbox/`, `src/sandbox/` |
@@ -35,6 +36,7 @@ sentinel-x/
 │   │   └── scripts/live|demo/   # Production sync vs dev demos
 │   └── langgraph-server/        # LangGraph dev graph (ingest → … → query)
 ├── apps/
+│   ├── api/                     # FastAPI inspect + Alertmanager webhook (W7)
 │   └── ui/                      # Streamlit minimal UI (W4)
 ├── mcp-servers/                 # k8s/, prometheus/, compose/, images/
 ├── skills/                      # Markdown skills + SQLite FTS index (W5)
@@ -44,7 +46,7 @@ sentinel-x/
 └── dist/                        # Offline helm bundles (kube-prometheus)
 ```
 
-**Planned (not in repo yet):** `apps/api/`, root `docker-compose.yml`, top-level `configs/`.
+**Planned (not in repo yet):** root `docker-compose.yml`, top-level `configs/`.
 
 ---
 

@@ -1,5 +1,5 @@
+﻿# DO NOT EDIT 鈥?copy from deploy/prometheus/install-kube-prometheus-offline.sh via prepare-kube-prometheus-offline.ps1
 #!/bin/bash
-# DO NOT EDIT �?copy from deploy/prometheus/install-kube-prometheus-offline.sh via prepare-kube-prometheus-offline.ps1
 # Install kube-prometheus-stack on k3s without GitHub access.
 # Run from bundle dir prepared by deploy/prometheus/prepare-kube-prometheus-offline.ps1 (or manual helm pull).
 #
@@ -92,7 +92,7 @@ print(len(d.get('data',{}).get('result',[]) or []))
 " 2>/dev/null || echo 0)"
   log "container_cpu_usage_seconds_total series count: ${n}"
   if [[ "${n}" == "0" ]]; then
-    log "WARN: no container_cpu series yet �?wait 2-5 min for scrape or check node-exporter/cAdvisor"
+    log "WARN: no container_cpu series yet ??wait 2-5 min for scrape or check node-exporter/cAdvisor"
   fi
 }
 
@@ -113,7 +113,7 @@ configure_mcp_prometheus_url() {
     if [[ -n "${prom_c}" ]]; then
       docker exec -i "${prom_c}" curl -sf "${url}/-/ready" >/dev/null \
         && log "MCP container can reach Prometheus" \
-        || log "WARN: MCP container cannot reach ${url} �?check extra_hosts in docker-compose.yml"
+        || log "WARN: MCP container cannot reach ${url} ??check extra_hosts in docker-compose.yml"
     fi
   fi
 }

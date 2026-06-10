@@ -111,7 +111,8 @@ $distInstall = Join-Path $OutDir "install-kube-prometheus-offline.sh"
 $content = Get-Content $distInstall -Raw
 if ($content -notmatch "DO NOT EDIT") {
     $header = "# DO NOT EDIT — copy from deploy/prometheus/install-kube-prometheus-offline.sh via prepare-kube-prometheus-offline.ps1`n"
-    Set-Content -Encoding utf8 -NoNewline -Path $distInstall -Value ($header + $content)
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($distInstall, $header + $content, $utf8NoBom)
 }
 
 Write-Host ""

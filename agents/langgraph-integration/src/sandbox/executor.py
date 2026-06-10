@@ -62,6 +62,9 @@ def run_sandbox_command(
         "run",
         "--rm",
         "--read-only",
+        # Host kubeconfig (e.g. k3s.yaml) is often mode 600 root:root; non-root cannot read the bind mount.
+        "--user",
+        "0:0",
         "--network",
         "host",
         "-v",

@@ -1,7 +1,7 @@
 # Sentinel-X 架构评审（第二版）
 
-> **评审日期**：2026-06-05  
-> **基线**：W1–W6 **代码完成**（W1–W4 生产 live 已验收；W5 Skills、W6 沙箱单测与图节点已接线；W6 **live 沙箱未验收**）  
+> **评审日期**：2026-06-05（**v2.1 更新 2026-06-09**：W5/W6 live 验收）  
+> **基线**：W1–W6 **live 已验收**（含 Skills record、沙箱 kubectl + verified + 生产 ns block）  
 > **范围**：`agents/`、`mcp-servers/`、`apps/`、`deploy/`、`skills/`、`sandbox/`、`docs/`、`dist/`  
 > **上一版**：2026-06-04 v1（W1–W4 基线）
 
@@ -15,11 +15,11 @@
 | `skills/` | 占位 / 未实现 | **Live** — FTS 检索 + `record_skill` 图节点 |
 | `sandbox/` | 占位 / 未实现 | **Live（代码）** — Docker kubectl + 审计 + Ready 30s 验证 |
 | LangGraph 流水线 | ingest → gather → diagnose → narrate → execute → query | 新增 **retrieve_skills → sandbox_run → verify_skill → record_skill** |
-| 「查判试记」 | 仅「查」「判」live | 「记」单测通过；「试」代码完成、**live 待验** |
-| P0 一键部署 | v1 文末标 ✅ | 脚本已入库，**新机 live 验收未写入 W23**（见 §7） |
+| 「查判试记」 | 仅「查」「判」live | **查判试记均 live**（2026-06-09，[`2026-W23.md §7`](weekly/2026-W23.md)） |
+| P0 一键部署 | v1 文末标 ✅ | 脚本已入库；**P0 增量 live 已验收**（新机 one-shot 可选复验） |
 | 单测规模 | ~150+ | ~200+（新增 `test_skills_*`、`test_sandbox_*`） |
 
----
+**v2.1（2026-06-09）**：W5/W6 **生产 live 已验收** — 见 [`2026-W23.md §7`](weekly/2026-W23.md)；`verify-sentinel-x.sh` 全绿；`list_pods count=8`。
 
 ## 1. 当前架构（实际 vs 愿景）
 
@@ -31,10 +31,10 @@
 | Prometheus MCP | `mcp-servers/prometheus/` | 同上 | **Live** |
 | 数据面（Adapter / Sync / Query） | `agents/langgraph-integration/src/` | LangGraph 集成 | **Live** |
 | 编排图 | `agents/langgraph-server/src/graph.py` | Agent 图 | **Live** — 含 W5/W6 节点 |
-| Skills 存储与检索 | `skills/` + `src/skills/` | W5「记」 | **Live（代码+单测）** |
-| 沙箱预演 | `sandbox/` + `src/sandbox/` | W6「试」 | **Live（代码）** / **live 未验收** |
+| Skills 存储与检索 | `skills/` + `src/skills/` | W5「记」 | **Live ✅** |
+| 沙箱预演 | `sandbox/` + `src/sandbox/` | W6「试」 | **Live ✅** |
 | 运维脚本 | `deploy/*.sh`、`deploy/*.service` | deploy 模板 | **Live** |
-| 一键安装 | `deploy/install/install-sentinel-x.sh` | P0 | **脚本存在**；新机验收见 §7 |
+| 一键安装 | `deploy/install/install-sentinel-x.sh` | P0 | **脚本存在**；P0 live 验收已记录（[`2026-W23.md §7`](weekly/2026-W23.md)） |
 | 部署文档 | `docs/deploy/DEPLOY-*.md`、`DEPLOY-REFERENCE.md` | 文档 | **Live** |
 | Streamlit UI | `apps/ui/app.py` | MVP UI | **Minimal live** |
 | 离线 Prom bundle | `dist/kube-prometheus-offline/` | 运维用 | **Live** |
@@ -66,7 +66,7 @@ START → ingest → gather → diagnose → retrieve_skills → narrate
 
 - README **Implementation status** 已与 W5/W6 对齐（[`README.md`](../README.md)）。
 - 仍缺：`apps/api/`、根 `docker-compose.yml`、多集群 live、`SENTINEL_EXECUTE_LIVE` 生产写。
-- W6 live 需：`docker build sandbox/`、`fixtures/crash-loop-deployment.yaml`、生产机 Docker — 见 [`sandbox/README.md`](../sandbox/README.md)。
+- W6 live 已验收：`docker build sandbox/`、fixture、`dry_run=false` inspect、audit — 见 [`2026-W23.md §7`](weekly/2026-W23.md)、[`sandbox/README.md`](../sandbox/README.md)。
 
 ---
 
@@ -123,8 +123,8 @@ flowchart TB
 |------|------|--------|----------|
 | **查** | MCP → 图 → Query | **Live ✅** | W1–W3：`list_pods`、`top_pods_by_cpu`；[`DEPLOY-REFERENCE.md`](deploy/DEPLOY-REFERENCE.md) |
 | **判** | gather → diagnose → narrate | **Live ✅** | W2 inspect E2E；[`DEPLOY-INSPECT-LIVE.md`](deploy/DEPLOY-INSPECT-LIVE.md) |
-| **试** | execute → sandbox → verify | **代码 ✅ / Live ⏳** | 单测：`test_sandbox_*`、`test_skills_sandbox_integration.py`；**无 W23 live 记录** |
-| **记** | retrieve → record_skill | **代码 ✅ / 生产待验** | 单测：`test_skills_retrieve_integration.py`；示例 [`skills/examples/fix-crashloop-restart.md`](../skills/examples/fix-crashloop-restart.md) |
+| **试** | execute → sandbox → verify | **Live ✅** | W6 live：delete + `sandbox_pass`（healthy）；kube-system **blocked**；[`2026-W23.md §7`](weekly/2026-W23.md) |
+| **记** | retrieve → record_skill | **Live ✅** | W5 live：`Similar past skills`；`fix-crashloop-restart.md` hit_count=11 |
 
 **execute 三态**（[`execute.py`](../agents/langgraph-integration/src/agent/execute.py)）：
 
@@ -194,7 +194,7 @@ flowchart TB
 | E2E live | `test_langgraph_inspect_live.py` | 默认 skip |
 | UI / deploy | — | **缺口** |
 
-**结论**：W5/W6 核心路径单测充分；**生产路径**（docker exec、systemd、沙箱 live、一键安装）仍依赖手工与 runbook。
+**结论**：W5/W6 核心路径单测充分；**W6 live + verify 已于 2026-06-09 手工验收**（[`2026-W23.md §7`](weekly/2026-W23.md)）。UI / deploy 自动化 E2E 仍为缺口。
 
 ### 5.2 冗余与文档
 
@@ -209,10 +209,10 @@ flowchart TB
 | 风险 | 严重度 | 现状 / 缓解 |
 |------|--------|-------------|
 | **LangGraph in-memory checkpoint** | P1 运维 | post-restart hook + cron sync 契约；**W8+ Postgres/SQLite 持久化待调研**（[`ROADMAP.md`](ROADMAP.md) §W8+） |
-| **W6 live 沙箱未验收** | P1 闭环 | 需镜像 + fixture + 生产 Docker；阻塞「试」端到端演示 |
+| **LangGraph 改 sandbox 代码需 restart** | P2 运维 | CLI 新进程 vs systemd 常驻；改 `executor.py` 后 `systemctl restart sentinel-langgraph` + sync |
 | **verify Ready 30s** | P2 产品 | 默认 `SENTINEL_SANDBOX_READY_SEC=30`；慢启动 Deployment 可能误拒 `verified` |
 | **审计按月 JSONL** | P2 运维 | `audit-YYYY-MM.jsonl` 无自动归档策略；长期磁盘需监控 |
-| **一键部署 live 验收** | P0 运维 | `install-sentinel-x.sh` 已入库；W23 记录「评审后 plan 保留、下周验收」 |
+| **新机 one-shot 独立复验** | P2 运维 | P0 增量验收已完成；从零 `install-sentinel-x.sh` 新机复验可选 |
 | **`sys.path` 注入** | P1 工程 | `graph.py`、`apps/ui/app.py`、大量 tests；integration 无 `pyproject.toml` 可编辑安装 |
 | **`SENTINEL_EXECUTE_LIVE` 未实现** | 安全（预期） | 默认拒绝 live 写；W8+ 需审批与 Action MCP |
 | **LLM 可选未 prod 固化** | P2 | DashScope timeout / 降级路径未写入 live 验收 |
@@ -224,11 +224,11 @@ flowchart TB
 
 ## 7. 建议（按优先级）
 
-### P0 — 新机可复现（下周）
+### P0 — 新机可复现
 
-1. **一键安装 live 验收**：`sudo bash deploy/install/install-sentinel-x.sh` + `deploy/verify/verify-sentinel-x.sh --after-restart` 写入 [`docs/weekly/`](weekly/)。
-2. **W6 沙箱 live**：`docker build -t sentinel-x-sandbox:latest sandbox/` → apply fixture → `dry_run=false` inspect → 检查 `sandbox/audit/` 与 `skill_verification.verified`。
-3. 保持 [`DEPLOY-ONE-SHOT.md`](deploy/DEPLOY-ONE-SHOT.md) 为唯一新机入口。
+1. ~~**W6 沙箱 live**~~ **已完成**（2026-06-09）：[`2026-W23.md §7`](weekly/2026-W23.md)。
+2. ~~**P0 增量 live 验收**~~ **已完成**：`verify-sentinel-x.sh` 全绿；W1–W6 闭环。
+3. 保持 [`DEPLOY-ONE-SHOT.md`](deploy/DEPLOY-ONE-SHOT.md) 为唯一新机入口；**可选**：新机独立 one-shot 复验写入后续周报。
 
 ### P1 — 1–2 周
 
@@ -253,12 +253,11 @@ flowchart TB
 - **闭环完整性**：从「查+判」扩展到图内 **retrieve / sandbox / verify / record**，与 README「查判试记」叙事一致。
 - **可测试性**：W5/W6 新增 ~20+ 用例，含 `test_skills_sandbox_integration.py` 跨节点场景。
 - **安全默认值**：生产 ns 写操作默认 block；live execute 显式未实现；沙箱 policy 白名单 kubectl。
-- **文档诚实度**：README / ROADMAP 标注 W6 live 待验、`apps/api` 未实现。
+- **文档诚实度**：README / ROADMAP / W23 周报已同步 W6 live 状态；`apps/api` 仍标注未实现。
 
 ### 8.2 仍存在的短板
 
-- **Live 深度**：W5/W6 主要在 dev/单测；生产服务器尚未证明「第二次 CrashLoop 命中 Skill + 沙箱 verified」。
-- **运维自动化 E2E**：一键脚本 vs 实际新机验收存在 **文档/周报不一致**（v1 标 ✅，W23 标推迟）。
+- **新机 one-shot**：增量 P0 已验收；从零 `install-sentinel-x.sh` 独立复验仍可选。
 - **持久化**：checkpoint 与 Skills DB 仍随部署目录/local 路径，无 HA 故事。
 
 ### 8.3 评分（10 分制，相对 MVP 目标）
@@ -266,15 +265,15 @@ flowchart TB
 | 维度 | v1 | v2 | 说明 |
 |------|----|----|------|
 | 架构方向 | 8.0 | **8.5** | 图流水线与 MVP 愿景对齐 |
-| 生产 live 就绪 | 7.5 | **7.5** | W1–W4 稳；W5/W6 live 未加分 |
+| 生产 live 就绪 | 7.5 | **8.0** | W1–W6 live；沙箱 verified + block 已证 |
 | 代码质量 / 单测 | 7.5 | **8.0** | skills+sandbox 测试补强 |
-| 运维体验 | 6.5 | **7.0** | 一键脚本入库；live 验收待补 |
-| 文档一致性 | 7.0 | **7.5** | ROADMAP W23 + README 同步 |
-| **综合** | **7.3** | **7.7** | 适合进入 W7；不宜在大重构前阻塞 |
+| 运维体验 | 6.5 | **7.5** | P0 live runbook + verify 全绿；新机 one-shot 可选复验 |
+| 文档一致性 | 7.0 | **8.0** | W23 §7 + ROADMAP 同步 |
+| **综合** | **7.3** | **8.0** | 适合进入 W7；checkpoint 为下一瓶颈 |
 
 ### 8.4 总结
 
-Sentinel-X 在 Phase 1（看见系统 + inspect）上 **架构稳定**；W5/W6 将「记」「试」**代码化进同一条 LangGraph 流水线**，是 v1 之后最显著的结构演进。当前瓶颈不在建模，而在 **live 验收广度**（沙箱、一键部署、告警驱动）与 **checkpoint / packaging 工程债**。建议优先 P0 live 闭环演示，再推进 W7 半自动与 W8+ 持久化 execute。
+Sentinel-X 在 Phase 1（看见系统 + inspect）上 **架构稳定**；W5/W6 将「记」「试」**代码化并 live 验收进同一条 LangGraph 流水线**。当前瓶颈转向 **W7 告警驱动**、**checkpoint 持久化** 与 **新机 one-shot 可选复验**，而非沙箱 live 闭环本身。
 
 ---
 

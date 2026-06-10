@@ -21,12 +21,20 @@ prometheus:
     nodePort: 30909
 
 kube-state-metrics:
-  enabled: true
+  # registry.k8s.io redirects to pkg.dev (often blocked); W3 container_cpu does not require KSM
+  enabled: false
 
 prometheus-node-exporter:
   enabled: true
 
-# k3s single-node: avoid scheduling pressure from anti-affinity defaults
+# k3s single-node: disable admission webhook hooks + operator TLS (no admission secret)
 prometheusOperator:
+  tls:
+    enabled: false
   admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false
+    certManager:
+      enabled: false
     failurePolicy: Ignore

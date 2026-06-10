@@ -27,6 +27,9 @@ sandbox/
 ## Setup
 
 ```bash
+# Copy kubectl from k3s host (avoids pulling bitnami/kubectl from docker.io)
+cp "$(command -v kubectl)" sandbox/kubectl && chmod +x sandbox/kubectl
+
 docker build -t sentinel-x-sandbox:latest sandbox/
 kubectl apply -f sandbox/fixtures/crash-loop-deployment.yaml
 ```

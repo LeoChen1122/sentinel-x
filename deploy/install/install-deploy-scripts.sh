@@ -17,6 +17,9 @@ install_script() {
 install_script "${DEPLOY_SYNC}/sync-kubeconfig-for-mcp.sh" /usr/local/bin/sentinel-sync-kubeconfig.sh
 install_script "${DEPLOY_SYNC}/sync-k8s.sh" /usr/local/bin/sentinel-sync-k8s.sh
 install_script "${DEPLOY_SYNC}/sync-prom.sh" /usr/local/bin/sentinel-sync-prom.sh
+if [[ -f "${DEPLOY_SYNC}/sentinel-inspect-patrol.sh" ]]; then
+  install_script "${DEPLOY_SYNC}/sentinel-inspect-patrol.sh" /usr/local/bin/sentinel-inspect-patrol.sh
+fi
 
 for f in "${DEPLOY_CONFIG}/sentinel-config-discover.sh" "${DEPLOY_CONFIG}/sentinel-config-apply.sh" \
   "${DEPLOY_SYSTEMD}/sentinel-langgraph-post-restart.sh"; do

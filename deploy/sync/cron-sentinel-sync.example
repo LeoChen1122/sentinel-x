@@ -5,3 +5,6 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Every 5 minutes
 */5 * * * * root /usr/local/bin/sentinel-sync-k8s.sh >/dev/null 2>&1
+
+# W7: inspect patrol (3 min after sync window)
+5-59/5 * * * * root /usr/local/bin/sentinel-inspect-patrol.sh >>/var/log/sentinel-patrol.log 2>&1

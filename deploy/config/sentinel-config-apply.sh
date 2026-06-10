@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Render child env files from /etc/sentinel/sentinel-x.env
 #
-#   sudo bash deploy/config/sentinel-config-apply.sh [--discover] [--reload] [--with-ui] [--with-prom-sync]
+#   sudo bash deploy/config/sentinel-config-apply.sh [--discover] [--reload] [--with-ui] [--with-api] [--with-prom-sync]
 #
 set -euo pipefail
 
@@ -12,6 +12,7 @@ ENV_MASTER="${SENTINEL_X_ENV:-/etc/sentinel/sentinel-x.env}"
 DO_DISCOVER=0
 DO_RELOAD=0
 WITH_UI=0
+WITH_API=0
 WITH_PROM_SYNC=0
 
 while [[ $# -gt 0 ]]; do
@@ -19,10 +20,11 @@ while [[ $# -gt 0 ]]; do
     --discover) DO_DISCOVER=1 ;;
     --reload) DO_RELOAD=1 ;;
     --with-ui) WITH_UI=1 ;;
+    --with-api) WITH_API=1 ;;
     --with-prom-sync) WITH_PROM_SYNC=1 ;;
     --env-file) ENV_MASTER="$2"; shift ;;
     -h|--help)
-      echo "Usage: sentinel-config-apply.sh [--discover] [--reload] [--with-ui] [--with-prom-sync]"
+      echo "Usage: sentinel-config-apply.sh [--discover] [--reload] [--with-ui] [--with-api] [--with-prom-sync]"
       exit 0
       ;;
     *) echo "Unknown: $1" >&2; exit 1 ;;
@@ -123,6 +125,22 @@ EOF
   config_log "wrote /etc/sentinel/sentinel-ui.env"
 }
 
+write_api_env() {
+  cat > /etc/sentinel/sentinel-api.env <<EOF
+${GEN_HEADER}
+SENTINEL_ROOT=${SENTINEL_ROOT}
+LANGGRAPH_API_URL=${LANGGRAPH_API_URL}
+LANGGRAPH_THREAD_ID=${LANGGRAPH_THREAD_ID}
+CLUSTER_ID=${CLUSTER_ID}
+NAMESPACE=${NAMESPACE}
+SENTINEL_PATROL_DRY_RUN=${SENTINEL_PATROL_DRY_RUN:-true}
+SENTINEL_PATROL_COOLDOWN_SEC=${SENTINEL_PATROL_COOLDOWN_SEC:-3600}
+EOF
+  chmod 600 /etc/sentinel/sentinel-api.env
+  config_strip_crlf /etc/sentinel/sentinel-api.env
+  config_log "wrote /etc/sentinel/sentinel-api.env"
+}
+
 write_mcp_env() {
   local mcp_env="${SENTINEL_ROOT}/mcp-servers/compose/.env"
   mkdir -p "$(dirname "$mcp_env")"
@@ -153,15 +171,22 @@ if [[ "$WITH_UI" -eq 1 ]] || systemctl is-enabled sentinel-ui >/dev/null 2>&1; t
   write_ui_env
 fi
 
+if [[ "$WITH_API" -eq 1 ]] || systemctl is-enabled sentinel-api >/dev/null 2>&1; then
+  write_api_env
+fi
+
 if [[ "$DO_RELOAD" -eq 1 ]]; then
   MCP_DIR="${SENTINEL_ROOT}/mcp-servers/compose"
   if [[ -d "$MCP_DIR" ]]; then
     DC="$(config_docker_compose)"
-    bash -c "cd '$MCP_DIR' && $DC up -d mcp-k8s mcp-prometheus" || config_log "WARN: mcp compose up failed"
+    bash -c "cd '$MCP_DIR' && unset PROMETHEUS_BASE_URL && $DC up -d --force-recreate mcp-prometheus" || config_log "WARN: mcp compose up failed"
   fi
   if [[ -f /etc/sentinel/sentinel-ui.env ]]; then
     unset PROMETHEUS_BASE_URL
     systemctl restart sentinel-ui 2>/dev/null || true
+  fi
+  if [[ -f /etc/sentinel/sentinel-api.env ]]; then
+    systemctl restart sentinel-api 2>/dev/null || true
   fi
   systemctl restart sentinel-langgraph 2>/dev/null || config_log "WARN: sentinel-langgraph restart failed"
 fi

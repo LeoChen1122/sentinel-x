@@ -48,6 +48,22 @@ Fixture?`kubectl apply -f sandbox/fixtures/crash-loop-deployment.yaml`
 
 ---
 
+## Patrol / API ???W7?
+
+| ?? | ?? | ?? |
+|------|------|------|
+| `SENTINEL_PATROL_ENABLED` | `1` | `0` ???? |
+| `SENTINEL_PATROL_COOLDOWN_SEC` | `3600` | ? Pod ?? re-inspect ?? |
+| `SENTINEL_PATROL_STATE_PATH` | `/var/lib/sentinel/inspect-patrol-state.json` | cooldown ?? |
+| `SENTINEL_PATROL_DRY_RUN` | `true` | patrol / webhook ?? dry_run |
+| `SENTINEL_PATROL_LOG` | `/var/log/sentinel-patrol.log` | patrol ?? |
+| `SENTINEL_API_TOKEN` | ? | API Bearer???=??? localhost? |
+| `SENTINEL_API_HOST` | `127.0.0.1:8080` | FastAPI bind |
+
+?? [`DEPLOY-ALERT-INSPECT.md`](DEPLOY-ALERT-INSPECT.md)?
+
+---
+
 ## Checkpoint ??
 
 LangGraph ?? **?? checkpoint**????? sync ??????? [ROADMAP.md](../ROADMAP.md) W8+?

@@ -1,0 +1,29 @@
+[Unit]
+Description=Sentinel-X API (W7 alert + inspect webhook)
+Documentation=file:/opt/sentinel-x/docs/deploy/DEPLOY-ALERT-INSPECT.md
+After=network-online.target sentinel-langgraph.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/sentinel-x/apps/api
+
+EnvironmentFile=-/etc/sentinel/sentinel-api.env
+Environment=PATH=/opt/sentinel-x/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONPATH=/opt/sentinel-x/agents/langgraph-integration/src:/opt/sentinel-x/apps/api/src
+Environment=PYTHONUNBUFFERED=1
+
+ExecStart=/opt/sentinel-x/.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8080 --app-dir /opt/sentinel-x/apps/api/src
+
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentinel-api
+
+[Install]
+WantedBy=multi-user.target

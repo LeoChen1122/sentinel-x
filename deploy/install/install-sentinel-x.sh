@@ -12,6 +12,7 @@ ROOT="${SENTINEL_ROOT:-/opt/sentinel-x}"
 ENV_MASTER="${SENTINEL_X_ENV:-/etc/sentinel/sentinel-x.env}"
 
 WITH_UI=0
+WITH_API=0
 WITH_PROMETHEUS=0
 WITH_PROM_SYNC=0
 SKIP_SYNC=0
@@ -23,6 +24,7 @@ usage() {
 Usage: install-sentinel-x.sh [options]
 
   --with-ui              Enable sentinel-ui systemd
+  --with-api             Enable sentinel-api systemd (W7 webhook)
   --with-prometheus      Run dist/kube-prometheus-offline install (bundle required)
   --with-prom-sync       Install sync-prom env + optional cron hint
   --skip-sync            Skip first K8s sync
@@ -38,6 +40,7 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --with-ui) WITH_UI=1 ;;
+    --with-api) WITH_API=1 ;;
     --with-prometheus) WITH_PROMETHEUS=1 ;;
     --with-prom-sync) WITH_PROM_SYNC=1 ;;
     --skip-sync) SKIP_SYNC=1 ;;
@@ -141,6 +144,9 @@ run "$VENV_PY" -m pip install -q -r "${SENTINEL_ROOT}/agents/langgraph-integrati
 if [[ "$WITH_UI" -eq 1 ]]; then
   run "$VENV_PY" -m pip install -q -r "${SENTINEL_ROOT}/apps/ui/requirements.txt"
 fi
+if [[ "$WITH_API" -eq 1 ]]; then
+  run "$VENV_PY" -m pip install -q -r "${SENTINEL_ROOT}/apps/api/requirements.txt"
+fi
 
 # thread_id
 if [[ -z "${LANGGRAPH_THREAD_ID:-}" ]]; then
@@ -198,7 +204,7 @@ if [[ "$SKIP_MCP" -eq 0 ]]; then
   done
   log "starting MCP containers in $MCP_DIR"
   run bash -c "cd '$MCP_DIR' && $DC build mcp-k8s mcp-prometheus"
-  run bash -c "cd '$MCP_DIR' && $DC up -d mcp-k8s mcp-prometheus"
+  run bash -c "cd '$MCP_DIR' && unset PROMETHEUS_BASE_URL && $DC up -d mcp-k8s mcp-prometheus"
 fi
 
 MCP_K8S_CONTAINER="${MCP_K8S_CONTAINER:-$(detect_mcp_container sentinel-x-mcp-k8s:latest)}"
@@ -210,9 +216,17 @@ log "MCP_PROM_CONTAINER=${MCP_PROM_CONTAINER:-<none>}"
 # --- Discover + apply child env files ---
 APPLY_ARGS=(--discover)
 [[ "$WITH_UI" -eq 1 ]] && APPLY_ARGS+=(--with-ui)
+[[ "$WITH_API" -eq 1 ]] && APPLY_ARGS+=(--with-api)
 [[ "$WITH_PROM_SYNC" -eq 1 ]] && APPLY_ARGS+=(--with-prom-sync)
 run bash "${DEPLOY_CONFIG}/sentinel-config-discover.sh" --write --env-file "$ENV_MASTER"
 run bash "${DEPLOY_CONFIG}/sentinel-config-apply.sh" "${APPLY_ARGS[@]}" --env-file "$ENV_MASTER"
+
+# Recreate MCP prom so env_file .env wins over any stale container env (AUTO from early source).
+if [[ "$SKIP_MCP" -eq 0 ]]; then
+  DC="$(docker_compose)"
+  MCP_DIR="${SENTINEL_ROOT}/mcp-servers/compose"
+  run bash -c "cd '$MCP_DIR' && unset PROMETHEUS_BASE_URL && $DC up -d --force-recreate mcp-prometheus"
+fi
 
 # shellcheck disable=SC1090
 set -a
@@ -242,6 +256,14 @@ if [[ "$WITH_UI" -eq 1 ]]; then
   run systemctl daemon-reload
   run systemctl enable sentinel-ui.service
   run systemctl restart sentinel-ui.service
+fi
+
+if [[ "$WITH_API" -eq 1 ]]; then
+  run cp "${DEPLOY_SYSTEMD}/sentinel-api.service" /etc/systemd/system/sentinel-api.service
+  run sed -i "s|/opt/sentinel-x|${SENTINEL_ROOT}|g" /etc/systemd/system/sentinel-api.service
+  run systemctl daemon-reload
+  run systemctl enable sentinel-api.service
+  run systemctl restart sentinel-api.service
 fi
 
 # --- cron template ---

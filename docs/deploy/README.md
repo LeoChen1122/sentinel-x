@@ -21,6 +21,7 @@
 | [DEPLOY-PROMETHEUS-K3S.md](DEPLOY-PROMETHEUS-K3S.md) | Prometheus 离线安装 |
 | [DEPLOY-PROM-SYNC.md](DEPLOY-PROM-SYNC.md) | Prom metrics sync |
 | [DEPLOY-INSPECT-LIVE.md](DEPLOY-INSPECT-LIVE.md) | Live inspect 验收 |
+| [DEPLOY-ALERT-INSPECT.md](DEPLOY-ALERT-INSPECT.md) | W7 告警 patrol + API Webhook |
 | [DEPLOY-UI-LIVE.md](DEPLOY-UI-LIVE.md) | Streamlit UI |
 
 **脚本模板**：[`deploy/README.md`](../../deploy/README.md)

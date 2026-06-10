@@ -4,7 +4,7 @@
 > 每周结束后在 [`docs/weekly/`](weekly/) 新增一份周总结，并回链到本文档对应周次。
 
 **最后更新**：2026-06-05  
-**当前阶段**：W6 沙箱预演（**代码验收**）；W5 Skills 已完成
+**当前阶段**：W7 告警 + 半自动闭环 **代码已完成**；服务器 live 验收 **待执行**
 
 ---
 
@@ -24,8 +24,8 @@
 | Phase 1c | W3 Prometheus 进图 | Prom MCP → Pod 指标 enrichment | **live 验收完成** |
 | Phase 3 | LangGraph 集成（第三版） | Adapter / Sync / Query 数据面 | 代码 90%，live 75% |
 | Phase 4 | 多集群（第四版） | cluster_id / tenant 隔离 | mock 100%，live 0% |
-| Phase 5 | Diagnosis / 动作层 | gather → diagnose → execute | 代码 75%，live 20% |
-| MVP 2–5 | 第一版开发方案 | 沙箱 / Skills / Streamlit UI | UI **live**；Skills **live**；沙箱 **W6 代码完成** |
+| Phase 5 | Diagnosis / 动作层 | gather → diagnose → execute → sandbox | 代码 75%，live **~40%** |
+| MVP 2–5 | 第一版开发方案 | 沙箱 / Skills / Streamlit UI | UI **live**；Skills **live**；沙箱 **W6 live ✅** |
 
 ---
 
@@ -54,11 +54,10 @@
 
 - W2-4 可选 LLM（DashScope timeout）
 - W3 可选 Prom cron（`sentinel-sync-prom.sh`）
-- W6 沙箱 live 验收（需 `sentinel-sandbox` fixture + Docker 镜像）
+- 新机 one-shot `install-sentinel-x.sh` 独立复验（P0 运维，可选）
 
 ### 3.3 未开始（按 MVP 愿景）
 
-- `apps/api` — planned（W7 可选）
 - Chroma / embedding Skills 后端
 - gVisor 沙箱（W6 用 Docker + namespace 策略）
 - Live K8s 写操作（`SENTINEL_EXECUTE_LIVE=1`，W8+）
@@ -194,31 +193,35 @@ sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespac
 
 ---
 
-### W6 — P3：沙箱预演（「试」）— **代码已完成**
+### W6 — P3：沙箱预演（「试」）— **代码 + live 已完成**
 
 **目标**：修复命令不进生产，先进受限容器。
 
 | 序号 | 任务 | 产出 / 验收 | 状态 |
 |------|------|-------------|------|
-| W6-1 | `sandbox/` 模块 | Docker 受限执行 kubectl 子集 | ✅ |
-| W6-2 | planner + verifier | `src/sandbox/` + `sandbox_run` 图节点 | ✅ |
-| W6-3 | 审计日志 | `sandbox/audit/*.jsonl` | ✅ |
-| W6-4 | 与 execute 衔接 | `dry_run=false` → 沙箱；生产 ns block | ✅ |
+| W6-1 | `sandbox/` 模块 | Docker 受限执行 kubectl 子集 | ✅ code + **live** |
+| W6-2 | planner + verifier | `src/sandbox/` + `sandbox_run` 图节点 | ✅ code + **live** |
+| W6-3 | 审计日志 | `sandbox/audit/*.jsonl` | ✅ code + **live** |
+| W6-4 | 与 execute 衔接 | `dry_run=false` → 沙箱；生产 ns block | ✅ code + **live** |
 
-**W6 完成标准**：restart/scale 在 `sentinel-sandbox` 跑通并出审计；`verify_skill` → `verified: true`。**单测已覆盖**；live 见 [`sandbox/README.md`](../sandbox/README.md)。
+**W6 完成标准**：restart/scale 在 `sentinel-sandbox` 跑通并出审计；`verify_skill` → `verified: true`。**已于 2026-06-09 live 验收**（[`2026-W23.md §7`](weekly/2026-W23.md)）；见 [`sandbox/README.md`](../sandbox/README.md)。
 
 ---
 
-### W7 — P3：告警入口 + 半自动闭环
+### W7 — P3：告警入口 + 半自动闭环 — **代码已完成**
 
 **目标**：从「人工 query」到「事件驱动一次诊断」。
 
-| 序号 | 任务 | 产出 / 验收 |
-|------|------|-------------|
-| W7-1 | 告警/Webhook 或 cron 巡检 | Event 阈值触发 inspect |
-| W7-2 | FastAPI 薄层（可选） | 接收告警 → 触发 LangGraph run |
-| W7-3 | 端到端演示脚本 | 告警 → 诊断 → 沙箱 → 报告 |
-| W7-4 | Phase 2 MVP 评审 | 对照第一版方案「查判试记」清单 |
+**部署文档** → **[DEPLOY-ALERT-INSPECT.md](deploy/DEPLOY-ALERT-INSPECT.md)**
+
+| 序号 | 任务 | 产出 / 验收 | 状态 |
+|------|------|-------------|------|
+| W7-1 | cron 巡检 → inspect | `src/trigger/` + `sentinel-inspect-patrol.sh` | ✅ 代码 |
+| W7-2 | FastAPI 薄层（可选） | `POST /v1/inspect` + Alertmanager webhook | ✅ 代码 |
+| W7-3 | E2E demo | `alert_to_inspect_demo.py` | ✅ 代码 |
+| W7-4 | Phase 2 MVP 评审 | DEPLOY-ALERT-INSPECT §验收清单 | ⏳ live 待勾选 |
+
+**W7 完成标准**：CrashLoop Pod 经 cron patrol 自动触发 inspect（默认 dry_run）；可选 API 与 patrol 共用 `trigger_inspect`。**服务器 live 验收待执行**。
 
 ---
 
@@ -260,9 +263,9 @@ sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespac
 | W2 | [2026-W22.md](weekly/2026-W22.md) | Live inspect E2E | **已完成** → [DEPLOY-INSPECT-LIVE.md](deploy/DEPLOY-INSPECT-LIVE.md) |
 | W3 | [2026-W22.md](weekly/2026-W22.md) §6 | Prometheus 进图 | **已完成** → [DEPLOY-PROM-SYNC.md](deploy/DEPLOY-PROM-SYNC.md) |
 | W4 | [2026-W22.md](weekly/2026-W22.md) §7 | UI + 部署文档 | **已完成** → [DEPLOY-UI-LIVE.md](deploy/DEPLOY-UI-LIVE.md) |
-| W5 | — | Skills | **已完成** → [`skills/README.md`](../skills/README.md) |
-| W6 | [2026-W23.md](weekly/2026-W23.md) | 沙箱预演 | **代码完成** → [`sandbox/README.md`](../sandbox/README.md) |
-| W7 | — | 告警 + 半自动闭环 | 待开始 |
+| W5 | [2026-W23.md](weekly/2026-W23.md) §7 | Skills | **live 已完成** → [`skills/README.md`](../skills/README.md) |
+| W6 | [2026-W23.md](weekly/2026-W23.md) §7 | 沙箱预演 | **live 已完成** → [`sandbox/README.md`](../sandbox/README.md) |
+| W7 | [2026-W24.md](weekly/2026-W24.md) | 告警 + 半自动闭环 | **代码完成** → [DEPLOY-ALERT-INSPECT.md](deploy/DEPLOY-ALERT-INSPECT.md) |
 
 ---
 
@@ -290,6 +293,10 @@ export LANGGRAPH_RUN_LIVE=1
 python /opt/sentinel-x/agents/langgraph-integration/scripts/demo/inspect_langgraph_live_demo.py \
   --thread-only --cluster-id "$CLUSTER_ID" --namespace "$NAMESPACE" \
   --pod-name <name> --thread-id "$LANGGRAPH_THREAD_ID"
+
+# W7 patrol（需 CrashLoop 等不健康 Pod 在图中）
+sudo /usr/local/bin/sentinel-inspect-patrol.sh
+tail -20 /var/log/sentinel-patrol.log
 ```
 
 ---
@@ -302,6 +309,7 @@ python /opt/sentinel-x/agents/langgraph-integration/scripts/demo/inspect_langgra
 | W4 服务器部署总览 | [`docs/deploy/DEPLOY-SERVER.md`](deploy/DEPLOY-SERVER.md) |
 | W4 Streamlit live | [`docs/deploy/DEPLOY-UI-LIVE.md`](deploy/DEPLOY-UI-LIVE.md) |
 | W2 Live inspect E2E | [`docs/deploy/DEPLOY-INSPECT-LIVE.md`](deploy/DEPLOY-INSPECT-LIVE.md) |
+| W7 Alert patrol + API | [`docs/deploy/DEPLOY-ALERT-INSPECT.md`](deploy/DEPLOY-ALERT-INSPECT.md) |
 | W3 Prom metrics sync | [`docs/deploy/DEPLOY-PROM-SYNC.md`](deploy/DEPLOY-PROM-SYNC.md) |
 | W3 Prometheus 离线安装 | [`docs/deploy/DEPLOY-PROMETHEUS-K3S.md`](deploy/DEPLOY-PROMETHEUS-K3S.md) |
 | 仓库 README | [`README.md`](../README.md) |
