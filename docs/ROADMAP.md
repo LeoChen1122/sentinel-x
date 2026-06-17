@@ -14,7 +14,7 @@
 | [ADR](adr/README.md) | 架构决策记录 ADR-001~004 |
 | [Dev Log](dev-log/README.md) | 轻量开发日志（vs 下方 weekly 详细周报） |
 | [CHANGELOG](../CHANGELOG.md) | 版本变更 v0.1–v0.4 |
-| [GitHub import](.github-import/README.md) | Project / Release 手动导入清单 |
+| [GitHub import](.github-import/README.md) | Project / Release 导入指南（中英双语） |
 
 ---
 

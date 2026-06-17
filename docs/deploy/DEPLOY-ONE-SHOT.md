@@ -160,7 +160,7 @@ sudo bash /opt/sentinel-x/deploy/verify/verify-sentinel-x.sh --full
 | W5 | 两次 inspect 同一 CrashLoop | 第二次 narrative 含 Similar past skills | ✅（2026-06-09） | [2026-W23.md §7](../weekly/2026-W23.md) |
 | W6 | `sandbox_demo.py --pod-name crash-demo`（非 dry-run） | delete ok；kube-system inspect → blocked | ✅（2026-06-09） | [2026-W23.md §7](../weekly/2026-W23.md) |
 | W7 | `sentinel-inspect-patrol.sh` | `issues` 含 CrashLoop | ✅（2026-06-17） | [2026-W26.md](../weekly/2026-W26.md)：auto + cooldown |
-| W7 API | `curl -X POST http://127.0.0.1:8080/v1/inspect ...` | `ok=true` | ⏳ 可选 | `verify --full` 仅 `/health`；POST inspect 未 curl |
+| W7 API | `curl -X POST http://127.0.0.1:8080/v1/inspect ...` | `ok=true` | ✅ | `verify --full` 含 `/health` + POST inspect（`crash-demo` @ `sentinel-sandbox`） |
 
 W25 全栈 install 以 `verify --full` 为主验收；W3–W6 沿用 W22/W23 历史 live 记录（非 W25 当日逐项复跑）。
 

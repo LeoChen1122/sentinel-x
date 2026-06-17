@@ -2,36 +2,41 @@
 
 Screenshots for the root [README.md](../../README.md) Demo section.
 
+All demo PNGs are normalized to **1400×900** for consistent README display.
+
 | File | Content | 内容 |
 |------|---------|------|
 | `inspect-crashloop.png` | API inspect → `issues: CrashLoop` → `restart_pod` (simulated) | Agent 根因分析 |
-| `streamlit-ui.png` | Streamlit layout: pods table + inspect (representative) | UI 界面示意 |
+| `streamlit-ui.png` | Streamlit `:8501` live capture via SSH tunnel | UI 真实截图 |
 | `sandbox-verify.png` | `sandbox_demo.py` dry-run execution output | 沙箱预演 |
 
 ## Regenerate | 重新生成
 
-**1. Capture live outputs on server** (optional refresh):
+**1. Capture live outputs on server:**
 
 ```bash
 bash scripts/capture-demo-outputs.sh   # on production host as root
-# copies to docs/assets/demo/ via scp — see script header
+# scp inspect.json + sandbox.txt to docs/assets/demo/
 ```
 
-**2. Render PNGs** (local, requires Pillow):
+**2. Render inspect + sandbox PNGs** (1400×900, requires Pillow + source files in `docs/assets/demo/`):
 
 ```bash
 pip install Pillow
 python scripts/render_demo_screenshots.py
 ```
 
-`inspect-crashloop.png` and `sandbox-verify.png` use **live** data from `47.120.6.221` (2026-06-17).  
-`streamlit-ui.png` is a **styled snapshot** (UI query failed in headless capture; layout matches `apps/ui/app.py`).
-
-## Manual screenshot (preferred for Streamlit)
+**3. Streamlit browser capture** (1400×900 viewport):
 
 ```bash
-ssh -L 8501:127.0.0.1:8501 root@<host>
-# browser → http://127.0.0.1:8501 → save as streamlit-ui.png
+pip install playwright && playwright install chromium
+python scripts/capture_streamlit_screenshot.py
 ```
 
-Replace `streamlit-ui.png` when you have a real browser capture.
+**4. Normalize all three to same canvas** (if sizes drift):
+
+```bash
+python scripts/normalize_demo_images.py
+```
+
+README uses `<img width="1000">` per screenshot (full-width stack, not 3-column table).

@@ -24,10 +24,20 @@ Goal: **lower MTTR** for Kubernetes incidents. This is an **SRE agent**, not a c
 
 ## Demo
 
-| Inspect RCA | Streamlit UI | Sandbox verify |
-|:---:|:---:|:---:|
-| ![Inspect CrashLoop RCA](docs/assets/demo/inspect-crashloop.png) | ![Streamlit UI](docs/assets/demo/streamlit-ui.png) | ![Sandbox verify](docs/assets/demo/sandbox-verify.png) |
-| `POST /v1/inspect` → `issues: CrashLoop` → `restart_pod` | Pods / top CPU / inspect (`apps/ui/`) | `sandbox_demo.py` dry-run · simulated restart |
+<p align="center">
+  <img src="docs/assets/demo/inspect-crashloop.png" alt="Inspect RCA — CrashLoop diagnosis" width="1000"/>
+</p>
+<p align="center"><sub><b>Inspect RCA</b> · <code>POST /v1/inspect</code> → <code>issues: CrashLoop</code> → <code>restart_pod</code></sub></p>
+
+<p align="center">
+  <img src="docs/assets/demo/streamlit-ui.png" alt="Streamlit UI — pods and inspect" width="1000"/>
+</p>
+<p align="center"><sub><b>Streamlit UI</b> · Pods / top CPU / inspect (<code>apps/ui/</code> · live k3s-prod)</sub></p>
+
+<p align="center">
+  <img src="docs/assets/demo/sandbox-verify.png" alt="Sandbox verify — dry-run restart" width="1000"/>
+</p>
+<p align="center"><sub><b>Sandbox verify</b> · <code>sandbox_demo.py</code> dry-run · simulated restart</sub></p>
 
 Live evidence: [2026-W26](docs/weekly/2026-W26.md) · Full install: [DEPLOY-ONE-SHOT.md](docs/deploy/DEPLOY-ONE-SHOT.md)
 

@@ -100,10 +100,13 @@ curl -s http://127.0.0.1:8080/health
 
 curl -s -X POST http://127.0.0.1:8080/v1/inspect \
   -H "Content-Type: application/json" \
-  -d '{"pod_name":"sentinel-crash-test","namespace":"kube-system","dry_run":true}'
+  -H "Authorization: Bearer ${SENTINEL_API_TOKEN}" \
+  -d '{"pod_name":"crash-demo","namespace":"sentinel-sandbox","dry_run":true}'
 ```
 
-SSH 隧道（本机调试）：`ssh -L 808 0:127.0.0.1:8080 root@<host>`
+若 `/etc/sentinel/sentinel-x.env` 未设置 `SENTINEL_API_TOKEN`，可省略 `Authorization` 头（仅绑定 `127.0.0.1`）。
+
+SSH 隧道（本机调试）：`ssh -L 8080:127.0.0.1:8080 root@<host>`
 
 ### 4.3 Alertmanager webhook 示例
 
@@ -140,7 +143,7 @@ python .../alert_to_inspect_demo.py --mode api --pod sentinel-crash-test --dry-r
 - [x] CrashLoop Pod 触发 inspect，`issues` 含 `CrashLoop`（`crash-demo` @ `sentinel-sandbox`，2026-06-17 live）
 - [x] 默认 `SENTINEL_PATROL_DRY_RUN=true`（无生产写）
 - [x] cooldown：同 Pod 二次 patrol → `status: cooldown`（`inspect-patrol-state.json`）
-- [ ] （可选）`POST /v1/inspect` 与 patrol 结果一致
+- [x] （可选）`POST /v1/inspect` 与 patrol 结果一致
 - [ ] （可选）Alertmanager webhook 解析 `pod` label 并 trigger
 - [ ] 查 / 判 / 试 / 记：stream 含 `diagnosis`、`execution`；`dry_run=false` 时含 `sandbox_result`
 

@@ -15,7 +15,7 @@ while [[ $# -gt 0 ]]; do
     --env-file) ENV_FILE="$2"; shift ;;
     -h|--help)
       echo "Usage: verify-sentinel-x.sh [--after-restart] [--full] [--env-file PATH]"
-      echo "  --full   W5-W7: skills dir, sandbox image, patrol script, optional API health"
+      echo "  --full   W5-W7: skills dir, sandbox image, patrol script, API health + POST /v1/inspect"
       exit 0
       ;;
     *) echo "Unknown: $1" >&2; exit 1 ;;
@@ -111,6 +111,45 @@ if [[ "$FULL" -eq 1 ]]; then
       ok "sentinel-api /health"
     else
       warn "sentinel-api enabled but /health failed — systemctl status sentinel-api"
+    fi
+
+    API_ENV="/etc/sentinel/sentinel-api.env"
+    API_TOKEN=""
+    if [[ -f "$API_ENV" ]]; then
+      # shellcheck disable=SC1090
+      set -a
+      source <(grep -v '^\s*#' "$API_ENV" | grep -v '^\s*$' || true)
+      set +a
+      API_TOKEN="${SENTINEL_API_TOKEN:-}"
+    fi
+
+    export LANGGRAPH_RUN_LIVE=1
+    INSPECT_NS="${SENTINEL_PATROL_EXTRA_NAMESPACES:-sentinel-sandbox}"
+    INSPECT_NS="${INSPECT_NS%%,*}"
+    INSPECT_POD=""
+    if command -v kubectl >/dev/null 2>&1; then
+      INSPECT_POD="$(kubectl get pods -n "$INSPECT_NS" -l app=crash-demo \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    fi
+    INSPECT_POD="${INSPECT_POD:-crash-demo}"
+
+    echo "[verify] POST /v1/inspect pod=${INSPECT_POD} ns=${INSPECT_NS}..."
+    CURL_ARGS=(-sf --connect-timeout 3 -m 120 -X POST "http://127.0.0.1:8080/v1/inspect"
+      -H "Content-Type: application/json"
+      -d "{\"pod_name\":\"${INSPECT_POD}\",\"namespace\":\"${INSPECT_NS}\",\"dry_run\":true}")
+    if [[ -n "$API_TOKEN" ]]; then
+      CURL_ARGS+=(-H "Authorization: Bearer ${API_TOKEN}")
+    fi
+
+    API_RESP=""
+    if API_RESP="$(curl "${CURL_ARGS[@]}" 2>/dev/null)"; then
+      if echo "$API_RESP" | grep -q 'CrashLoop'; then
+        ok "POST /v1/inspect issues contain CrashLoop"
+      else
+        warn "POST /v1/inspect returned but no CrashLoop in response: ${API_RESP:0:200}"
+      fi
+    else
+      warn "POST /v1/inspect failed — check sentinel-api journal and LangGraph /ok"
     fi
   else
     echo "[verify] SKIP sentinel-api (not enabled)"

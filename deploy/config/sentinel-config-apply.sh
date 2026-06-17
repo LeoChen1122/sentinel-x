@@ -160,6 +160,9 @@ NAMESPACE=${NAMESPACE}
 SENTINEL_PATROL_DRY_RUN=${SENTINEL_PATROL_DRY_RUN:-true}
 SENTINEL_PATROL_COOLDOWN_SEC=${SENTINEL_PATROL_COOLDOWN_SEC:-3600}
 EOF
+  if [[ -n "${SENTINEL_API_TOKEN:-}" ]]; then
+    echo "SENTINEL_API_TOKEN=${SENTINEL_API_TOKEN}" >>/etc/sentinel/sentinel-api.env
+  fi
   chmod 600 /etc/sentinel/sentinel-api.env
   config_strip_crlf /etc/sentinel/sentinel-api.env
   config_log "wrote /etc/sentinel/sentinel-api.env"

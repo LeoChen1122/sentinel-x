@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = ROOT / "docs" / "assets" / "demo"
-W, H = 960, 540
+W, H = 1400, 900
 BG = (18, 22, 28)
 PANEL = (28, 34, 44)
 ACCENT = (56, 189, 248)
@@ -37,9 +37,9 @@ def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.I
 def _new_canvas(title: str, subtitle: str) -> tuple[Image.Image, ImageDraw.ImageDraw]:
     img = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(img)
-    draw.rectangle((0, 0, W, 72), fill=PANEL)
-    draw.text((24, 16), title, fill=ACCENT, font=_font(22, bold=True))
-    draw.text((24, 44), subtitle, fill=MUTED, font=_font(13))
+    draw.rectangle((0, 0, W, 80), fill=PANEL)
+    draw.text((24, 16), title, fill=ACCENT, font=_font(28, bold=True))
+    draw.text((24, 48), subtitle, fill=MUTED, font=_font(16))
     return img, draw
 
 
@@ -66,11 +66,11 @@ def render_inspect() -> None:
         "Sentinel-X Inspect — Root Cause Analysis",
         "POST /v1/inspect · crash-demo @ sentinel-sandbox · dry_run=true",
     )
-    mono = _font(14)
-    y = 96
-    draw.text((24, y), f"ok: {data.get('ok')}", fill=GREEN, font=_font(16, bold=True))
-    y += 32
-    draw.text((24, y), f"issues: {data.get('issues')}", fill=AMBER, font=_font(16, bold=True))
+    mono = _font(18)
+    y = 110
+    draw.text((32, y), f"ok: {data.get('ok')}", fill=GREEN, font=_font(22, bold=True))
+    y += 40
+    draw.text((32, y), f"issues: {data.get('issues')}", fill=AMBER, font=_font(22, bold=True))
     y += 32
     draw.text((24, y), f"pod: {data.get('pod_name')}", fill=TEXT, font=mono)
     y += 24
@@ -99,15 +99,15 @@ def render_sandbox() -> None:
         "Sentinel-X Sandbox — Pre-run Validation",
         "sandbox_demo.py · sentinel-sandbox namespace · dry_run",
     )
-    mono = _font(14)
-    y = 96
-    for line in raw.splitlines()[:16]:
+    mono = _font(18)
+    y = 110
+    for line in raw.splitlines()[:20]:
         color = GREEN if "simulated" in line or '"ok": true' in line else TEXT
         if "restart_pod" in line:
             color = AMBER
-        draw.text((24, y), line[:110], fill=color, font=mono)
-        y += 22
-    draw.text((24, H - 48), "Would restart pod — no production K8s write", fill=MUTED, font=_font(13))
+        draw.text((32, y), line[:120], fill=color, font=mono)
+        y += 28
+    draw.text((32, H - 56), "Would restart pod — no production K8s write", fill=MUTED, font=_font(16))
     img.save(DEMO / "sandbox-verify.png")
 
 
@@ -152,10 +152,13 @@ def render_streamlit() -> None:
 
 def main() -> None:
     DEMO.mkdir(parents=True, exist_ok=True)
-    render_inspect()
-    render_sandbox()
-    render_streamlit()
-    print("Wrote:", DEMO / "inspect-crashloop.png", DEMO / "sandbox-verify.png", DEMO / "streamlit-ui.png")
+    if (DEMO / "inspect.json").exists():
+        render_inspect()
+    if (DEMO / "sandbox.txt").exists():
+        render_sandbox()
+    elif not (DEMO / "streamlit-ui.png").exists():
+        render_streamlit()
+    print("Done render (inspect/sandbox when source present)")
 
 
 if __name__ == "__main__":
