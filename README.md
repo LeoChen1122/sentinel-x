@@ -1,9 +1,80 @@
 # Sentinel-X
 
-**Cloud-Native Self-Healing Engine with MCP & Micro-Sandbox**
-（基于 MCP 与微沙箱的云原生自愈引擎）
+**AI-native SRE Agent Platform**  
+**云原生自愈 Agent 平台**
 
-> Sentinel-X 是一个开源的云原生自愈 Agent 框架，结合 **MCP 协议标准化工具对接** 与 **微沙箱安全预演**，实现智能运维闭环（**查 / 判 / 试 / 记 / 触**）。
+> MCP-standardized observability + micro-sandbox validation for Kubernetes operations.  
+> 基于 MCP 协议与微沙箱的云原生自愈 Agent，实现智能运维闭环（**查 / 判 / 试 / 记 / 触**）。
+
+---
+
+## Features
+
+| Capability | EN | 中文 |
+|------------|-----|------|
+| Observability | Kubernetes + Prometheus via MCP | K8s / Prom 可观测性 |
+| Analysis | Rule-based RCA + optional LLM narrative | 根因分析 + 可选 LLM 叙事 |
+| Skills | Markdown runbooks + SQLite FTS retrieval | Skill 框架与检索 |
+| Integration | Model Context Protocol tool servers | MCP 标准化工具层 |
+| Validation | Docker sandbox (namespace allowlist) | 沙箱预演修复 |
+| Deploy | One-shot bash install on k3s | 一键部署 |
+| Alert close | Cron patrol + API inspect trigger (W7) | 告警自动巡检与触发 |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TB
+  User["User / Cron / Alert"]
+  API["API :8080"]
+  Graph["LangGraph Agent"]
+  Skills["Skill Registry"]
+  MCP["MCP Servers"]
+  K8s["Kubernetes"]
+  Prom["Prometheus"]
+  SB["Sandbox"]
+
+  User --> API
+  User --> Graph
+  API --> Graph
+  Graph --> Skills
+  Graph --> MCP
+  MCP --> K8s
+  MCP --> Prom
+  Graph --> SB
+```
+
+**Detailed diagrams:** [docs/architecture/](docs/architecture/README.md) · **Decisions:** [docs/adr/](docs/adr/README.md) · **Internal review:** [ARCHITECTURE-REVIEW v3](docs/ARCHITECTURE-REVIEW.md)
+
+---
+
+## Roadmap
+
+| Version | Theme | Status |
+|---------|-------|--------|
+| **v0.1** | Monitoring MVP — K8s MCP, sync, list_pods | Released |
+| **v0.2** | Agent Runtime — LangGraph inspect pipeline | Released |
+| **v0.3** | Prometheus MCP — metrics in graph | Released |
+| **v0.4** | One-shot Deploy + W7 Alert Auto Close | **Current** |
+
+Full changelog: [CHANGELOG.md](CHANGELOG.md) · Engineering weekly plan: [docs/ROADMAP.md](docs/ROADMAP.md)
+
+---
+
+## Demo
+
+Screenshots and GIF — **coming soon** → [`docs/assets/demo/`](docs/assets/demo/)
+
+**Live verify on server** (after [one-shot install](docs/deploy/DEPLOY-ONE-SHOT.md)):
+
+```bash
+sudo verify-sentinel-x.sh --full
+sudo sentinel-inspect-patrol.sh
+curl -s http://127.0.0.1:8080/health
+```
+
+Evidence: [2026-W25](docs/weekly/2026-W25.md) (install) · [2026-W26](docs/weekly/2026-W26.md) (patrol)
 
 ---
 
@@ -19,12 +90,12 @@
 | Inspect / diagnose E2E | **Live (dry-run)** | `agents/langgraph-integration/scripts/demo/inspect_langgraph_live_demo.py` |
 | Alert patrol + inspect trigger (W7) | **Live ✅** (cron patrol) | `src/trigger/`, `deploy/sync/sentinel-inspect-patrol.sh` |
 | Prom metrics in graph (W3) | **Live** | `scripts/live/mcp_prom_sync_live.py`, `top_pods_by_cpu` |
-| FastAPI `apps/api` (W7) | **Live optional** (`--with-api`; `/health` ✅；`POST /v1/inspect` 未 live curl) | `apps/api/` |
+| FastAPI `apps/api` (W7) | **Live optional** (`--with-api`; `/health` + `POST /v1/inspect` ✅) | `apps/api/` |
 | Root `docker-compose.yml` | Planned | — |
 | `skills/` storage + FTS retrieval (W5) | **Live** | `skills/`, `agents/langgraph-integration/src/skills/` |
 | `sandbox/` pre-run (W6) | **Live** (Docker + namespace policy) | `sandbox/`, `src/sandbox/` |
 
-详细周计划与进度：**[docs/ROADMAP.md](docs/ROADMAP.md)** · 架构评审 v3：**[docs/ARCHITECTURE-REVIEW.md](docs/ARCHITECTURE-REVIEW.md)**
+详细周计划与进度：**[docs/ROADMAP.md](docs/ROADMAP.md)** · 架构评审 v3：**[docs/ARCHITECTURE-REVIEW.md](docs/ARCHITECTURE-REVIEW.md)** · 开发日志：**[docs/dev-log/](docs/dev-log/README.md)**
 
 ---
 
@@ -43,11 +114,11 @@ sentinel-x/
 ├── skills/                      # Markdown skills + SQLite FTS index (W5)
 ├── sandbox/                     # Docker kubectl executor + audit (W6)
 ├── deploy/                      # install/, config/, sync/, systemd/, prometheus/, verify/
-├── docs/                        # ROADMAP, deploy/, weekly/
+├── docs/                        # ROADMAP, adr/, architecture/, dev-log/, deploy/, weekly/
 └── dist/                        # Offline helm bundles (kube-prometheus)
 ```
 
-**Planned (not in repo yet):** root `docker-compose.yml`, top-level `configs/`.
+**Planned (not in repo yet):** root `docker-compose.yml`, top-level `configs/clusters.yaml` (live).
 
 ---
 
@@ -57,7 +128,7 @@ sentinel-x/
 
 Step-by-step index → **[docs/deploy/DEPLOY-SERVER.md](docs/deploy/DEPLOY-SERVER.md)**
 
-Ordered setup: k3s → MCP kubeconfig → LangGraph systemd → K8s cron sync → (optional) Prom → UI.
+Ordered setup: k3s → MCP kubeconfig → LangGraph systemd → K8s cron sync → (optional) Prom → UI → API.
 
 **Live defaults** (production server):
 
@@ -90,7 +161,8 @@ streamlit run apps/ui/app.py
 ```
 
 Integration tests: `python -m unittest discover -s agents/langgraph-integration/tests -v`  
-Graph smoke tests: `python -m pytest agents/langgraph-server/tests/ -v`
+Graph smoke tests: `python -m pytest agents/langgraph-server/tests/ -v`  
+API tests: `python -m unittest discover -s apps/api/tests -v`
 
 See also [agents/langgraph-integration/README.md](agents/langgraph-integration/README.md).
 
@@ -158,9 +230,14 @@ Default deny: delete namespace, bulk cleanup, arbitrary shell, non-whitelisted k
 
 | Doc | Topic |
 |-----|-------|
+| [docs/architecture/](docs/architecture/README.md) | Public architecture diagrams |
+| [docs/adr/](docs/adr/README.md) | Architecture decision records |
+| [docs/dev-log/](docs/dev-log/README.md) | Portfolio dev log |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
 | [docs/deploy/DEPLOY-ONE-SHOT.md](docs/deploy/DEPLOY-ONE-SHOT.md) | **P0** One-command server install |
 | [docs/deploy/DEPLOY-SERVER.md](docs/deploy/DEPLOY-SERVER.md) | Master server deploy index |
 | [docs/ARCHITECTURE-REVIEW.md](docs/ARCHITECTURE-REVIEW.md) | Architecture review |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Weekly plan & progress |
 | [deploy/README.md](deploy/README.md) | systemd / cron install table |
 | [apps/ui/README.md](apps/ui/README.md) | Streamlit run instructions |
+| [docs/.github-import/](docs/.github-import/README.md) | GitHub Project / Release import |

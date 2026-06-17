@@ -6,6 +6,16 @@
 **最后更新**：2026-06-17  
 **当前阶段**：P0 一键部署 **W1–W7 live ✅**；**W7 自动 patrol live ✅**（[`2026-W26.md`](weekly/2026-W26.md)）
 
+### 对外文档索引（Portfolio / 简历向）
+
+| 文档 | 说明 |
+|------|------|
+| [Architecture](architecture/README.md) | 三张公开架构图（overview / alert-loop / sandbox） |
+| [ADR](adr/README.md) | 架构决策记录 ADR-001~004 |
+| [Dev Log](dev-log/README.md) | 轻量开发日志（vs 下方 weekly 详细周报） |
+| [CHANGELOG](../CHANGELOG.md) | 版本变更 v0.1–v0.4 |
+| [GitHub import](.github-import/README.md) | Project / Release 手动导入清单 |
+
 ---
 
 ## 1. 项目目标（MVP 一句话）

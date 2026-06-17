@@ -18,3 +18,7 @@ docs/weekly/2026-W23.md
 ## 当前索引
 
 见 [`ROADMAP.md` §7](../ROADMAP.md#7-每周总结规范)。
+
+## Dev Log（对外短日志）
+
+详细工程周报见本目录；面向简历/Portfolio 的短日志见 [`../dev-log/`](../dev-log/README.md)。
