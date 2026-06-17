@@ -84,10 +84,34 @@ LANGGRAPH_THREAD_ID=${LANGGRAPH_THREAD_ID}
 LANGGRAPH_SYNC_STATE_PATH=${LANGGRAPH_SYNC_STATE_PATH:-/var/lib/sentinel/sync-state}
 LANGGRAPH_SYNC_INCREMENTAL=${LANGGRAPH_SYNC_INCREMENTAL:-1}
 SENTINEL_SYNC_LOG=${SENTINEL_SYNC_LOG:-/var/log/sentinel-sync.log}
+SENTINEL_PATROL_ENABLED=${SENTINEL_PATROL_ENABLED:-1}
+SENTINEL_PATROL_DRY_RUN=${SENTINEL_PATROL_DRY_RUN:-true}
+SENTINEL_PATROL_COOLDOWN_SEC=${SENTINEL_PATROL_COOLDOWN_SEC:-3600}
+SENTINEL_PATROL_STATE_PATH=${SENTINEL_PATROL_STATE_PATH:-/var/lib/sentinel/inspect-patrol-state.json}
+SENTINEL_PATROL_LOG=${SENTINEL_PATROL_LOG:-/var/log/sentinel-patrol.log}
+SENTINEL_PATROL_EXTRA_NAMESPACES=${SENTINEL_PATROL_EXTRA_NAMESPACES:-sentinel-sandbox}
 EOF
   chmod 600 /etc/sentinel/sync-k8s.env
   config_strip_crlf /etc/sentinel/sync-k8s.env
   config_log "wrote /etc/sentinel/sync-k8s.env"
+}
+
+write_langgraph_env() {
+  cat > /etc/sentinel/sentinel-langgraph.env <<EOF
+${GEN_HEADER}
+SENTINEL_ROOT=${SENTINEL_ROOT}
+SENTINEL_SANDBOX_ENABLED=${SENTINEL_SANDBOX_ENABLED:-1}
+SENTINEL_SANDBOX_NAMESPACE=${SENTINEL_SANDBOX_NAMESPACE:-sentinel-sandbox}
+SENTINEL_SANDBOX_IMAGE=${SENTINEL_SANDBOX_IMAGE:-sentinel-x-sandbox:latest}
+SENTINEL_SANDBOX_AUDIT_DIR=${SENTINEL_SANDBOX_AUDIT_DIR:-${SENTINEL_ROOT}/sandbox/audit}
+SENTINEL_SKILLS_DIR=${SENTINEL_SKILLS_DIR:-${SENTINEL_ROOT}/skills}
+SENTINEL_SKILLS_DB=${SENTINEL_SKILLS_DB:-${SENTINEL_ROOT}/skills/.index/skills.db}
+SENTINEL_SKILLS_RECORD=${SENTINEL_SKILLS_RECORD:-1}
+SENTINEL_SKILLS_SEARCH_LIMIT=${SENTINEL_SKILLS_SEARCH_LIMIT:-3}
+EOF
+  chmod 600 /etc/sentinel/sentinel-langgraph.env
+  config_strip_crlf /etc/sentinel/sentinel-langgraph.env
+  config_log "wrote /etc/sentinel/sentinel-langgraph.env"
 }
 
 write_sync_prom_env() {
@@ -161,6 +185,7 @@ mkdir -p /etc/sentinel
 [[ -n "$MCP_K8S_CONTAINER" ]] || config_log "WARN: MCP K8s container not found"
 
 write_sync_k8s_env
+write_langgraph_env
 write_mcp_env
 
 if [[ "$WITH_PROM_SYNC" -eq 1 ]] || [[ -f /etc/sentinel/sync-prom.env ]]; then

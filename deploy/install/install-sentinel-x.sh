@@ -15,6 +15,9 @@ WITH_UI=0
 WITH_API=0
 WITH_PROMETHEUS=0
 WITH_PROM_SYNC=0
+WITH_SANDBOX=0
+WITH_FIXTURES=0
+WITH_PATROL=1
 SKIP_SYNC=0
 SKIP_MCP=0
 DRY_RUN=0
@@ -27,6 +30,9 @@ Usage: install-sentinel-x.sh [options]
   --with-api             Enable sentinel-api systemd (W7 webhook)
   --with-prometheus      Run dist/kube-prometheus-offline install (bundle required)
   --with-prom-sync       Install sync-prom env + optional cron hint
+  --with-sandbox         Build sentinel-x-sandbox Docker image (W6)
+  --with-fixtures        Apply crash-demo fixture + busybox offline import (implies --with-sandbox)
+  --no-patrol            Skip patrol cron line (default: patrol enabled in cron template)
   --skip-sync            Skip first K8s sync
   --skip-mcp             Skip docker-compose MCP (already running)
   --env-file PATH        Master env (default: /etc/sentinel/sentinel-x.env)
@@ -43,6 +49,9 @@ while [[ $# -gt 0 ]]; do
     --with-api) WITH_API=1 ;;
     --with-prometheus) WITH_PROMETHEUS=1 ;;
     --with-prom-sync) WITH_PROM_SYNC=1 ;;
+    --with-sandbox) WITH_SANDBOX=1 ;;
+    --with-fixtures) WITH_FIXTURES=1; WITH_SANDBOX=1 ;;
+    --no-patrol) WITH_PATROL=0 ;;
     --skip-sync) SKIP_SYNC=1 ;;
     --skip-mcp) SKIP_MCP=1 ;;
     --env-file) ENV_MASTER="$2"; shift ;;
@@ -71,6 +80,21 @@ strip_crlf_dir() {
   local dir="$1"
   [[ -d "$dir" ]] || return 0
   find "$dir" -name '*.sh' -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+  find "$dir" -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
+}
+
+# First existing path (Windows scp/tar often drops +x; invoke via bash).
+resolve_deploy_script() {
+  local label="$1"
+  shift
+  local p
+  for p in "$@"; do
+    if [[ -f "$p" ]]; then
+      echo "$p"
+      return 0
+    fi
+  done
+  die "missing ${label} (checked: $*)"
 }
 
 require_cmd() {
@@ -87,6 +111,59 @@ compute_thread_id() {
 
 detect_mcp_container() {
   config_detect_mcp_container "$1"
+}
+
+kubectl_install() {
+  local kc="${K3S_KUBECONFIG:-/etc/rancher/k3s/k3s.yaml}"
+  if [[ -f "$kc" ]]; then
+    kubectl --kubeconfig="$kc" "$@"
+  else
+    kubectl "$@"
+  fi
+}
+
+install_sandbox_image() {
+  local sandbox_dir="${SENTINEL_ROOT}/sandbox"
+  [[ -d "$sandbox_dir" ]] || die "sandbox dir missing: $sandbox_dir"
+  local kubectl_bin
+  kubectl_bin="$(command -v kubectl || true)"
+  [[ -n "$kubectl_bin" ]] || die "--with-sandbox requires kubectl in PATH"
+  log "copying kubectl into sandbox/"
+  run cp "$kubectl_bin" "${sandbox_dir}/kubectl"
+  run chmod +x "${sandbox_dir}/kubectl"
+  run mkdir -p "${sandbox_dir}/audit"
+  log "building sentinel-x-sandbox:latest"
+  run docker build -t "${SENTINEL_SANDBOX_IMAGE:-sentinel-x-sandbox:latest}" "$sandbox_dir"
+}
+
+import_busybox_for_fixtures() {
+  local mirror="${SENTINEL_BUSYBOX_IMAGE:-docker.m.daocloud.io/library/busybox:1.36}"
+  local target="${SENTINEL_BUSYBOX_K3S_TAG:-docker.io/library/busybox:1.36}"
+  log "importing busybox for fixtures: $mirror"
+  if ! run docker pull "$mirror"; then
+    log "WARN: busybox pull failed — fixture may ImagePullBackOff"
+    return 0
+  fi
+  local tar="/tmp/sentinel-busybox.tar"
+  run docker save "$mirror" -o "$tar"
+  if command -v k3s >/dev/null 2>&1; then
+    run k3s ctr images import "$tar"
+    run k3s ctr images tag "$mirror" "$target" 2>/dev/null || true
+  else
+    log "WARN: k3s not in PATH — skip ctr import"
+  fi
+  run rm -f "$tar"
+}
+
+install_fixtures() {
+  local fixture="${SENTINEL_ROOT}/sandbox/fixtures/crash-loop-deployment.yaml"
+  [[ -f "$fixture" ]] || die "fixture missing: $fixture"
+  import_busybox_for_fixtures
+  log "applying sandbox fixtures"
+  run kubectl_install apply -f "$fixture"
+  log "waiting for crash-demo pod (may stay CrashLoopBackOff — expected)"
+  kubectl_install wait --for=condition=Ready pod -l app=crash-demo -n sentinel-sandbox --timeout=30s 2>/dev/null || \
+    log "WARN: crash-demo not Ready (CrashLoop is expected for W6 demo)"
 }
 
 # --- Preflight ---
@@ -155,11 +232,10 @@ if [[ -z "${LANGGRAPH_THREAD_ID:-}" ]]; then
 fi
 
 # --- Deploy scripts to /usr/local/bin ---
-if [[ -x "${DEPLOY_INSTALL}/install-deploy-scripts.sh" ]]; then
-  run bash "${DEPLOY_INSTALL}/install-deploy-scripts.sh"
-else
-  die "missing ${DEPLOY_INSTALL}/install-deploy-scripts.sh"
-fi
+INSTALL_DEPLOY_SCRIPTS="$(resolve_deploy_script install-deploy-scripts.sh \
+  "${DEPLOY_INSTALL}/install-deploy-scripts.sh" \
+  "${SENTINEL_DEPLOY_ROOT}/install-deploy-scripts.sh")"
+run bash "$INSTALL_DEPLOY_SCRIPTS"
 
 # --- Kubeconfig for MCP ---
 if [[ -f "${DEPLOY_SYNC}/sync-kubeconfig-for-mcp.sh" ]]; then
@@ -269,9 +345,20 @@ fi
 # --- cron template ---
 if [[ -f "${DEPLOY_SYNC}/cron-sentinel-sync.example" ]] && [[ ! -f /etc/cron.d/sentinel-sync ]]; then
   run cp "${DEPLOY_SYNC}/cron-sentinel-sync.example" /etc/cron.d/sentinel-sync
+  if [[ "$WITH_PATROL" -eq 0 ]]; then
+    run sed -i '/sentinel-inspect-patrol/d' /etc/cron.d/sentinel-sync
+  fi
   run chmod 644 /etc/cron.d/sentinel-sync
   run sed -i 's/\r$//' /etc/cron.d/sentinel-sync
-  log "installed /etc/cron.d/sentinel-sync (K8s sync every 5 min)"
+  log "installed /etc/cron.d/sentinel-sync (K8s sync every 5 min; patrol=$WITH_PATROL)"
+fi
+
+# --- Sandbox image + fixtures (W6) ---
+if [[ "$WITH_SANDBOX" -eq 1 ]]; then
+  install_sandbox_image
+fi
+if [[ "$WITH_FIXTURES" -eq 1 ]]; then
+  install_fixtures
 fi
 
 # --- Wait for LangGraph ---
@@ -294,6 +381,12 @@ if [[ "$SKIP_SYNC" -eq 0 ]]; then
     run env SENTINEL_PROM_SYNC_ENV=/etc/sentinel/sync-prom.env /usr/local/bin/sentinel-sync-prom.sh || \
       log "WARN: prom sync failed (Prometheus reachable?)"
   fi
+  if [[ "$WITH_FIXTURES" -eq 1 ]]; then
+    log "syncing sentinel-sandbox (crash-demo fixture) into graph..."
+    run env SENTINEL_SYNC_ENV=/etc/sentinel/sync-k8s.env NAMESPACE=sentinel-sandbox \
+      /usr/local/bin/sentinel-sync-k8s.sh || \
+      log "WARN: sentinel-sandbox sync failed"
+  fi
 fi
 
 # --- Summary ---
@@ -307,6 +400,7 @@ cat <<EOF
 
 Next steps:
   1) Verify:  sudo bash ${DEPLOY_VERIFY}/verify-sentinel-x.sh
+  2) Full W5-W7: sudo bash ${DEPLOY_VERIFY}/verify-sentinel-x.sh --full
   2) Logs:    journalctl -u sentinel-langgraph -f
   3) Sync:    tail -f ${SENTINEL_SYNC_LOG:-/var/log/sentinel-sync.log}
   4) Query:   export LANGGRAPH_THREAD_ID=$LANGGRAPH_THREAD_ID

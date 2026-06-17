@@ -1,6 +1,6 @@
-# Sentinel-X 一键部署（新机开箱）
+# Sentinel-X 一键部署（新机开箱 · W1–W7 全栈）
 
-> **P0 入口**：在新 Linux 服务器上，用 **一条命令** 复现 W1–W4 已验收栈（MCP + LangGraph + cron sync + 可选 UI/Prom）。  
+> **P0 入口**：在新 Linux 服务器上，用 **一条命令** 复现 W1–W7 栈（MCP + LangGraph + cron sync + Skills + Sandbox + Patrol + 可选 UI/API/Prom）。  
 > **不依赖 GitHub**：请在本机打包后 `scp` 到服务器（见下文）。
 
 ---
@@ -24,114 +24,168 @@ k3s 离线安装见桌面 phase1b 指南或既有 airgap 文档；本脚本 **�
 
 ### 2.1 拷贝仓库
 
-```bash
-# 本机（有 Git 的环境）
-cd /path/to/sentinel-x
-# 可选：去掉 .git 减小体积
-tar czf sentinel-x.tgz --exclude='.git' --exclude='**/__pycache__' .
-
-scp sentinel-x.tgz root@<新服务器>:/tmp/
-ssh root@<新服务器>
-mkdir -p /opt/sentinel-x
-tar xzf /tmp/sentinel-x.tgz -C /opt/sentinel-x --strip-components=0
-# 若 tar 顶层为 sentinel-x/ 目录，则确保代码在 /opt/sentinel-x
+```powershell
+# Windows 本机
+cd C:\sentinel-x
+tar czf sentinel-x.tgz --exclude=.git --exclude=**/__pycache__ --exclude=**/.langgraph_api .
+scp -i C:\Users\<you>\.ssh\id_ed25519 sentinel-x.tgz root@<host>:/tmp/
 ```
 
-### 2.2 行尾（Windows 上传必做）
-
 ```bash
-find /opt/sentinel-x/deploy -name '*.sh' -exec sed -i 's/\r$//' {} +
+# 服务器 — 见 §3 选择「新机」或「重装」流程
 ```
 
-### 2.3 可选：Prometheus 离线包
+### 2.2 可选：Prometheus 离线包
 
 若需要 W3 指标（`top_pods_by_cpu`），在本机先准备 `dist/kube-prometheus-offline/`（见 [DEPLOY-PROMETHEUS-K3S.md](DEPLOY-PROMETHEUS-K3S.md)），与仓库一并 scp。
 
 ---
 
-## 3. 一键安装
+## 3. 解压与清空（顺序很重要）
 
-### 3.1 编辑主配置（推荐）
+`reset-sentinel-x.sh` **在 tarball 里**；且 reset 会 **删除整个 `/opt/sentinel-x`**。  
+因此：**不能**在 `/opt/sentinel-x` 解压后再跑 reset（会把刚解压的代码删掉）；**也不能**在只上传了 `.tgz`、尚未解压时直接跑 reset（脚本还不存在）。
+
+### 3.1 新机（`/opt/sentinel-x` 从未装过）
+
+直接解压到目标目录即可，**跳过 reset**：
+
+```bash
+mkdir -p /opt/sentinel-x
+tar xzf /tmp/sentinel-x.tgz -C /opt/sentinel-x --strip-components=1   # 按 tar 顶层目录调整
+find /opt/sentinel-x/deploy -name '*.sh' -exec sed -i 's/\r$//' {} +
+```
+
+### 3.2 重装（已有旧版 Sentinel-X）
+
+**先解压到临时目录 → reset → 再解压到 `/opt/sentinel-x`**：
+
+```bash
+# 1) 解压到 staging（reset 脚本从这里执行）
+mkdir -p /tmp/sentinel-x-staging
+tar xzf /tmp/sentinel-x.tgz -C /tmp/sentinel-x-staging --strip-components=1
+find /tmp/sentinel-x-staging/deploy -name '*.sh' -exec sed -i 's/\r$//' {} +
+
+# 2) 清空旧栈（会删除 /opt/sentinel-x，不影响 /tmp/staging）
+sudo bash /tmp/sentinel-x-staging/deploy/install/reset-sentinel-x.sh --yes
+# 预览：sudo bash .../reset-sentinel-x.sh --dry-run
+
+# 3) 正式解压到安装目录
+mkdir -p /opt/sentinel-x
+tar xzf /tmp/sentinel-x.tgz -C /opt/sentinel-x --strip-components=1
+find /opt/sentinel-x/deploy -name '*.sh' -exec sed -i 's/\r$//' {} +
+```
+
+也可省略步骤 3，直接 `cp -a /tmp/sentinel-x-staging/. /opt/sentinel-x/`（等价于再解压一次）。
+
+---
+
+## 4. 一键安装
+
+### 4.1 编辑主配置（推荐）
 
 ```bash
 sudo mkdir -p /etc/sentinel
-sudo cp /opt/sentinel-x/deploy/sentinel-x.env.example /etc/sentinel/sentinel-x.env
+sudo cp /opt/sentinel-x/deploy/config/sentinel-x.env.example /etc/sentinel/sentinel-x.env
 sudo nano /etc/sentinel/sentinel-x.env
-# 至少确认: CLUSTER_ID, NAMESPACE, PROMETHEUS_BASE_URL（若已装 Prom）
 sudo sed -i 's/\r$//' /etc/sentinel/sentinel-x.env
 ```
 
-### 3.2 执行安装脚本
+### 4.2 执行安装脚本
 
-**最小栈**（K8s MCP + LangGraph + cron + 首次 sync）：
+**最小栈**（W1–W2：K8s MCP + LangGraph + cron + 首次 sync）：
 
 ```bash
 cd /opt/sentinel-x
 sudo bash deploy/install/install-sentinel-x.sh
 ```
 
-**常用选项**：
+**W1–W7 全栈（推荐验收命令）**：
 
 ```bash
-# + Streamlit UI systemd
-sudo bash deploy/install/install-sentinel-x.sh --with-ui
-
-# + 离线 kube-prometheus（需 dist/kube-prometheus-offline/）
-sudo bash deploy/install/install-sentinel-x.sh --with-prometheus --with-prom-sync
-
-# 仅重装 LangGraph/MCP，跳过首次 sync
-sudo bash deploy/install/install-sentinel-x.sh --skip-sync
+sudo bash deploy/install/install-sentinel-x.sh \
+  --with-ui \
+  --with-api \
+  --with-prom-sync \
+  --with-sandbox \
+  --with-fixtures
 ```
+
+| 选项 | 作用 |
+|------|------|
+| `--with-ui` | Streamlit systemd `:8501` |
+| `--with-api` | FastAPI `:8080`（W7 webhook） |
+| `--with-prom-sync` | Prom metrics sync env + 首次 prom sync |
+| `--with-prometheus` | 离线 kube-prometheus（需 `dist/kube-prometheus-offline/`） |
+| `--with-sandbox` | 构建 `sentinel-x-sandbox:latest`（W6） |
+| `--with-fixtures` | 部署 `crash-demo` + busybox 离线导入（隐含 `--with-sandbox`） |
+| `--no-patrol` | cron 不含 patrol 行（默认含 W7 patrol） |
+| `--skip-sync` | 跳过首次 K8s sync |
 
 安装过程会：
 
-1. 创建 `/opt/sentinel-x/.venv` 并安装 pip 依赖  
-2. `install-deploy-scripts.sh` → `/usr/local/bin/sentinel-sync-*.sh`  
-3. `sentinel-sync-kubeconfig.sh` → `~/.kube/config`（改写 server 为宿主机 IP）  
-4. `docker-compose` 启动 `mcp-k8s`、`mcp-prometheus`（必要时先 `docker rm` 规避 1.29 bug）  
-5. `sentinel-config-discover.sh --write` + `sentinel-config-apply.sh` → 生成全部 `/etc/sentinel/*.env`  
-6. 启用 `sentinel-langgraph.service`  
-7. 安装 `/etc/cron.d/sentinel-sync`（每 5 分钟 K8s sync）  
-8. 等待 `curl http://127.0.0.1:2024/ok` 并执行首次 sync  
+1. 创建 venv 并安装 pip 依赖  
+2. `install-deploy-scripts.sh` → `/usr/local/bin/sentinel-sync-*.sh` + `sentinel-inspect-patrol.sh`  
+3. MCP compose + `sentinel-config-discover/apply` → `/etc/sentinel/*.env`  
+4. systemd：`sentinel-langgraph`（+ 可选 ui/api）  
+5. `/etc/cron.d/sentinel-sync`（K8s sync + patrol）  
+6. 可选 sandbox 镜像 + crash-demo fixture  
+7. 等待 LangGraph `/ok` 并首次 sync  
 
 ---
 
-## 4. 验证
+## 5. 验证
+
+**基线（W1–W4）**：
 
 ```bash
 sudo bash /opt/sentinel-x/deploy/verify/verify-sentinel-x.sh
 ```
 
-或手工：
+**全栈（W5–W7）**：
 
 ```bash
-curl -s http://127.0.0.1:2024/ok
-tail -20 /var/log/sentinel-sync.log
-systemctl status sentinel-langgraph
+sudo bash /opt/sentinel-x/deploy/verify/verify-sentinel-x.sh --full
 ```
-
-`LANGGRAPH_THREAD_ID` 由 discover + apply 从 `CLUSTER_ID` 计算。详见 [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md)。
 
 ---
 
-## 5. 安装后访问
+## 6. W1–W7 验收矩阵
 
-| 服务 | 地址 | 外网访问 |
-|------|------|----------|
-| LangGraph API | `http://127.0.0.1:2024` | `ssh -L 2024:127.0.0.1:2024 root@<host>` |
-| Streamlit UI | `http://127.0.0.1:8501` | `ssh -L 8501:127.0.0.1:8501 root@<host>` |
+| 周次 | 步骤 | 期望 | Live 状态 | 证据 |
+|------|------|------|-----------|------|
+| W1–W2 | `verify-sentinel-x.sh` | All checks passed；`list_pods count>=7` | ✅ | W25 `verify --full`；W22 baseline |
+| W3 | `sentinel-sync-prom.sh` + `top_pods_by_cpu` | 含 `cpu_cores`（需 Prom 可达） | ✅（2026-06-04） | [2026-W22.md §6](../weekly/2026-W22.md) |
+| W4 | SSH 隧道 `:8501` | UI 可见 pod 表 | ✅（2026-06-04） | [2026-W22.md §7](../weekly/2026-W22.md) |
+| W5 | 两次 inspect 同一 CrashLoop | 第二次 narrative 含 Similar past skills | ✅（2026-06-09） | [2026-W23.md §7](../weekly/2026-W23.md) |
+| W6 | `sandbox_demo.py --pod-name crash-demo`（非 dry-run） | delete ok；kube-system inspect → blocked | ✅（2026-06-09） | [2026-W23.md §7](../weekly/2026-W23.md) |
+| W7 | `sentinel-inspect-patrol.sh` | `issues` 含 CrashLoop | ✅（2026-06-17） | [2026-W26.md](../weekly/2026-W26.md)：auto + cooldown |
+| W7 API | `curl -X POST http://127.0.0.1:8080/v1/inspect ...` | `ok=true` | ⏳ 可选 | `verify --full` 仅 `/health`；POST inspect 未 curl |
 
-Inspect / Prom / UI 细节仍见专题文档：
+W25 全栈 install 以 `verify --full` 为主验收；W3–W6 沿用 W22/W23 历史 live 记录（非 W25 当日逐项复跑）。
+
+专题文档：
 
 - [DEPLOY-INSPECT-LIVE.md](DEPLOY-INSPECT-LIVE.md)
+- [DEPLOY-ALERT-INSPECT.md](DEPLOY-ALERT-INSPECT.md)
 - [DEPLOY-PROM-SYNC.md](DEPLOY-PROM-SYNC.md)
 - [DEPLOY-UI-LIVE.md](DEPLOY-UI-LIVE.md)
 
 ---
 
-## 6. 运维契约（必读）
+## 7. 安装后访问
 
-见 [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md) **Checkpoint 契约** 与 **环境变量索引**。容器重建后：
+| 服务 | 地址 | 外网访问 |
+|------|------|----------|
+| LangGraph API | `http://127.0.0.1:2024` | `ssh -L 2024:127.0.0.1:2024 root@<host>` |
+| Streamlit UI | `http://127.0.0.1:8501` | `ssh -L 8501:127.0.0.1:8501 root@<host>` |
+| Sentinel API | `http://127.0.0.1:8080` | `ssh -L 8080:127.0.0.1:8080 root@<host>` |
+
+---
+
+## 8. 运维契约
+
+见 [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md)。容器重建后：
 
 ```bash
 sudo bash deploy/config/sentinel-config-discover.sh --write
@@ -140,22 +194,23 @@ sudo bash deploy/config/sentinel-config-apply.sh --reload
 
 ---
 
-## 7. 故障速查
+## 9. 故障速查
 
 | 现象 | 处理 |
 |------|------|
-| `ContainerConfig` compose 错误 | 脚本已 `docker rm`；仍失败则 `cd mcp-servers && docker-compose rm -sf mcp-k8s && docker-compose up -d mcp-k8s` |
-| MCP 0 pods | 检查 `~/.kube/config` server 是否为宿主机 IP；重跑 `sentinel-sync-kubeconfig.sh` |
-| LangGraph 起不来 | `journalctl -u sentinel-langgraph -n 50`；确认 venv 中 `langgraph --version` |
-| Prom sync 失败 | 先 `curl http://127.0.0.1:30909/-/ready`；`mcp-servers/compose/.env` 中 `PROMETHEUS_BASE_URL` |
+| `ContainerConfig` compose 错误 | `docker rm` MCP 容器后重跑 install |
+| MCP 0 pods | 重跑 `sentinel-sync-kubeconfig.sh` |
+| busybox ImagePullBackOff | install 已尝试 daocloud + `k3s ctr import`；手补见 [sandbox/README.md](../../sandbox/README.md) |
+| LangGraph 起不来 | `journalctl -u sentinel-langgraph -n 50` |
+| patrol `no_candidates` | 先 sync；确认 crash-demo 在图中 |
+| Prom sync 失败 | `curl http://127.0.0.1:30909/-/ready` |
 
 ---
 
-## 8. 相关文档
+## 10. 相关文档
 
 | 文档 | 说明 |
 |------|------|
-| [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md) | canonical 参数、checkpoint、env |
+| [DEPLOY-REFERENCE.md](DEPLOY-REFERENCE.md) | canonical 参数、env |
 | [DEPLOY-SERVER.md](DEPLOY-SERVER.md) | 分步部署总索引 |
-| [ARCHITECTURE-REVIEW.md](ARCHITECTURE-REVIEW.md) | 架构评审与 P0/P1 建议 |
-| [deploy/README.md](../deploy/README.md) | systemd / cron 文件表 |
+| [deploy/README.md](../../deploy/README.md) | systemd / cron / reset 脚本 |

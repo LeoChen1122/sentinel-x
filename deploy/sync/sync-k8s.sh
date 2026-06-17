@@ -4,6 +4,8 @@ set -uo pipefail
 
 ENV_FILE="${SENTINEL_SYNC_ENV:-/etc/sentinel/sync-k8s.env}"
 LOCK_FILE="${SENTINEL_SYNC_LOCK:-/var/run/sentinel-sync.lock}"
+# Preserve caller override (e.g. NAMESPACE=sentinel-sandbox) before sourcing env file.
+NAMESPACE_OVERRIDE="${NAMESPACE:-}"
 
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
@@ -11,6 +13,10 @@ if [[ -f "$ENV_FILE" ]]; then
   # Strip CRLF (common when env was edited/uploaded from Windows)
   source <(sed 's/\r$//' "$ENV_FILE")
   set +a
+fi
+
+if [[ -n "$NAMESPACE_OVERRIDE" ]]; then
+  NAMESPACE="$NAMESPACE_OVERRIDE"
 fi
 
 SENTINEL_ROOT="${SENTINEL_ROOT:-/opt/sentinel-x}"

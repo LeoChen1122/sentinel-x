@@ -12,6 +12,7 @@ WorkingDirectory=/opt/sentinel-x/agents/langgraph-server
 
 # Main env: LLM keys, LangSmith, etc. (ASCII-only lines)
 EnvironmentFile=-/opt/sentinel-x/agents/langgraph-server/.env
+EnvironmentFile=-/etc/sentinel/sentinel-langgraph.env
 
 Environment=PATH=/opt/sentinel-x/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1

@@ -61,6 +61,32 @@ def _items_list(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _pod_display_status(status_obj: dict[str, Any]) -> str:
+    """Prefer container waiting/terminated reason over pod phase (CrashLoop keeps phase=Running)."""
+    phase = _opt_nonempty_str(status_obj.get("phase")) or "Unknown"
+    for key in ("containerStatuses", "initContainerStatuses"):
+        containers = status_obj.get(key)
+        if not isinstance(containers, list):
+            continue
+        for cs in containers:
+            if not isinstance(cs, dict):
+                continue
+            state = cs.get("state")
+            if not isinstance(state, dict):
+                continue
+            waiting = state.get("waiting")
+            if isinstance(waiting, dict):
+                reason = _opt_nonempty_str(waiting.get("reason"))
+                if reason:
+                    return reason
+            terminated = state.get("terminated")
+            if isinstance(terminated, dict):
+                reason = _opt_nonempty_str(terminated.get("reason"))
+                if reason and reason not in ("Completed",):
+                    return reason
+    return phase
+
+
 def normalize_pod_list(
     query: str,
     payload: dict[str, Any],
@@ -69,8 +95,8 @@ def normalize_pod_list(
 ) -> NormalizedK8sListResponse:
     """Turn a ``list_namespaced_pod`` API body (serialized dict) into ``{query, results}``.
 
-    Each result row is ``{"name": str, "status": str}`` where ``status`` is the Pod
-    ``phase`` (e.g. ``Running``), or ``Unknown`` if missing.
+    Each result row is ``{"name": str, "status": str}`` where ``status`` prefers
+    container waiting reason (e.g. ``CrashLoopBackOff``) over pod ``phase``.
 
     ``limit`` caps the number of rows returned (after filtering); use for large lists.
     Set env ``K8S_NORMALIZE_DEBUG=1`` for debug logs on odd payload shapes.
@@ -90,10 +116,10 @@ def normalize_pod_list(
         if not isinstance(name, str) or not name.strip():
             continue
         status_obj = item.get("status")
-        phase = None
+        display = "Unknown"
         if isinstance(status_obj, dict):
-            phase = _opt_nonempty_str(status_obj.get("phase"))
-        results.append({"name": name, "status": phase or "Unknown"})
+            display = _pod_display_status(status_obj)
+        results.append({"name": name, "status": display})
         if limit is not None and len(results) >= limit:
             break
     return NormalizedK8sListResponse(query=query, results=results)

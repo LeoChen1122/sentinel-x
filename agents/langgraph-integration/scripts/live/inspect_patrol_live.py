@@ -20,6 +20,7 @@ from trigger.config import patrol_config  # noqa: E402
 from trigger.inspect_trigger import trigger_inspect  # noqa: E402
 from trigger.patrol import (  # noqa: E402
     find_inspect_candidates,
+    find_inspect_candidates_multi,
     load_patrol_state,
     mark_pod_inspected,
     select_pod_to_inspect,
@@ -103,15 +104,23 @@ def main() -> int:
         _print_result(result, source="manual")
         return 0 if result.get("ok") else 1
 
-    candidates = find_inspect_candidates(
+    candidates = find_inspect_candidates_multi(
         thread_id=tid,
         cluster_id=cid,
-        namespace=ns,
+        namespaces=cfg.namespaces,
         client=client,
         tenant_id=args.tenant_id,
     )
     if not candidates:
-        print(json.dumps({"status": "no_candidates", "count": 0}))
+        print(
+            json.dumps(
+                {
+                    "status": "no_candidates",
+                    "count": 0,
+                    "namespaces": list(cfg.namespaces),
+                }
+            )
+        )
         return 2
 
     state = load_patrol_state(cfg.state_path)

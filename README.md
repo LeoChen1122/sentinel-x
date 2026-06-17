@@ -3,7 +3,7 @@
 **Cloud-Native Self-Healing Engine with MCP & Micro-Sandbox**
 （基于 MCP 与微沙箱的云原生自愈引擎）
 
-> Sentinel-X 是一个开源的云原生自愈 Agent 框架，结合 **MCP 协议标准化工具对接** 与 **微沙箱安全预演**，实现智能运维闭环（**查 / 判 / 试 / 记**）。
+> Sentinel-X 是一个开源的云原生自愈 Agent 框架，结合 **MCP 协议标准化工具对接** 与 **微沙箱安全预演**，实现智能运维闭环（**查 / 判 / 试 / 记 / 触**）。
 
 ---
 
@@ -14,16 +14,17 @@
 | K8s / Prom MCP | **Live** | `mcp-servers/` |
 | LangGraph graph + sync/query | **Live** | `agents/langgraph-integration/`, `agents/langgraph-server/` |
 | Deploy scripts + runbooks | **Live** | `deploy/`, `docs/deploy/DEPLOY-*.md` |
-| Streamlit UI (W4) | **Minimal** | `apps/ui/` |
+| P0 one-shot install (W1–W7) | **Live ✅** | `deploy/install/install-sentinel-x.sh`, [DEPLOY-ONE-SHOT.md](docs/deploy/DEPLOY-ONE-SHOT.md) |
+| Streamlit UI (W4) | **Minimal live** | `apps/ui/` |
 | Inspect / diagnose E2E | **Live (dry-run)** | `agents/langgraph-integration/scripts/demo/inspect_langgraph_live_demo.py` |
-| Alert patrol + inspect trigger (W7) | **Code complete** (live pending) | `src/trigger/`, `deploy/sync/sentinel-inspect-patrol.sh` |
+| Alert patrol + inspect trigger (W7) | **Live ✅** (cron patrol) | `src/trigger/`, `deploy/sync/sentinel-inspect-patrol.sh` |
 | Prom metrics in graph (W3) | **Live** | `scripts/live/mcp_prom_sync_live.py`, `top_pods_by_cpu` |
-| FastAPI `apps/api` (W7) | **Code complete** (optional `--with-api`) | `apps/api/` |
+| FastAPI `apps/api` (W7) | **Live optional** (`--with-api`; `/health` ✅；`POST /v1/inspect` 未 live curl) | `apps/api/` |
 | Root `docker-compose.yml` | Planned | — |
 | `skills/` storage + FTS retrieval (W5) | **Live** | `skills/`, `agents/langgraph-integration/src/skills/` |
 | `sandbox/` pre-run (W6) | **Live** (Docker + namespace policy) | `sandbox/`, `src/sandbox/` |
 
-详细周计划与进度：**[docs/ROADMAP.md](docs/ROADMAP.md)**
+详细周计划与进度：**[docs/ROADMAP.md](docs/ROADMAP.md)** · 架构评审 v3：**[docs/ARCHITECTURE-REVIEW.md](docs/ARCHITECTURE-REVIEW.md)**
 
 ---
 

@@ -23,8 +23,9 @@ deploy/
 
 | File | Usage |
 |------|-------|
-| [`install/install-sentinel-x.sh`](install/install-sentinel-x.sh) | `sudo bash deploy/install/install-sentinel-x.sh` |
+| [`install/install-sentinel-x.sh`](install/install-sentinel-x.sh) | `sudo bash deploy/install/install-sentinel-x.sh [--with-ui --with-api --with-sandbox --with-fixtures]` |
 | [`install/install-deploy-scripts.sh`](install/install-deploy-scripts.sh) | `sudo bash deploy/install/install-deploy-scripts.sh` |
+| [`install/reset-sentinel-x.sh`](install/reset-sentinel-x.sh) | `sudo bash deploy/install/reset-sentinel-x.sh [--yes]` — wipe Sentinel-X, keep k3s |
 
 ## config/
 
@@ -46,7 +47,8 @@ deploy/
 | [`sync/sync-k8s.sh`](sync/sync-k8s.sh) | `/usr/local/bin/sentinel-sync-k8s.sh` |
 | [`sync/sync-prom.sh`](sync/sync-prom.sh) | `/usr/local/bin/sentinel-sync-prom.sh` |
 | [`sync/sync-kubeconfig-for-mcp.sh`](sync/sync-kubeconfig-for-mcp.sh) | `/usr/local/bin/sentinel-sync-kubeconfig.sh` |
-| [`sync/cron-sentinel-sync.example`](sync/cron-sentinel-sync.example) | `/etc/cron.d/sentinel-sync` |
+| [`sync/sentinel-inspect-patrol.sh`](sync/sentinel-inspect-patrol.sh) | `/usr/local/bin/sentinel-inspect-patrol.sh` |
+| [`sync/cron-sentinel-sync.example`](sync/cron-sentinel-sync.example) | `/etc/cron.d/sentinel-sync` (K8s sync + patrol) |
 
 ## systemd/
 
@@ -68,7 +70,7 @@ deploy/
 
 | File | Usage |
 |------|-------|
-| [`verify/verify-sentinel-x.sh`](verify/verify-sentinel-x.sh) | `sudo bash deploy/verify/verify-sentinel-x.sh [--after-restart]` |
+| [`verify/verify-sentinel-x.sh`](verify/verify-sentinel-x.sh) | `sudo bash deploy/verify/verify-sentinel-x.sh [--full] [--after-restart]` |
 
 ---
 

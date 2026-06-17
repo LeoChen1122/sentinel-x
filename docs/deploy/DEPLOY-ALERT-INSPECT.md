@@ -136,10 +136,10 @@ python .../alert_to_inspect_demo.py --mode api --pod sentinel-crash-test --dry-r
 
 ## W7 验收检查表
 
-- [ ] `sentinel-inspect-patrol.sh` 安装且可执行
-- [ ] CrashLoop Pod 触发 inspect，`issues` 含 `CrashLoop`
-- [ ] 默认 `SENTINEL_PATROL_DRY_RUN=true`（无生产写）
-- [ ] cooldown：5 分钟内同一 Pod 不重复 trigger
+- [x] `sentinel-inspect-patrol.sh` 安装且可执行
+- [x] CrashLoop Pod 触发 inspect，`issues` 含 `CrashLoop`（`crash-demo` @ `sentinel-sandbox`，2026-06-17 live）
+- [x] 默认 `SENTINEL_PATROL_DRY_RUN=true`（无生产写）
+- [x] cooldown：同 Pod 二次 patrol → `status: cooldown`（`inspect-patrol-state.json`）
 - [ ] （可选）`POST /v1/inspect` 与 patrol 结果一致
 - [ ] （可选）Alertmanager webhook 解析 `pod` label 并 trigger
 - [ ] 查 / 判 / 试 / 记：stream 含 `diagnosis`、`execution`；`dry_run=false` 时含 `sandbox_result`

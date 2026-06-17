@@ -3,8 +3,8 @@
 > 本文档为 **主路线图**：概括当前进度、按优先级排列的后续周计划，以及每周总结的索引。  
 > 每周结束后在 [`docs/weekly/`](weekly/) 新增一份周总结，并回链到本文档对应周次。
 
-**最后更新**：2026-06-05  
-**当前阶段**：W7 告警 + 半自动闭环 **代码已完成**；服务器 live 验收 **待执行**
+**最后更新**：2026-06-17  
+**当前阶段**：P0 一键部署 **W1–W7 live ✅**；**W7 自动 patrol live ✅**（[`2026-W26.md`](weekly/2026-W26.md)）
 
 ---
 
@@ -24,7 +24,7 @@
 | Phase 1c | W3 Prometheus 进图 | Prom MCP → Pod 指标 enrichment | **live 验收完成** |
 | Phase 3 | LangGraph 集成（第三版） | Adapter / Sync / Query 数据面 | 代码 90%，live 75% |
 | Phase 4 | 多集群（第四版） | cluster_id / tenant 隔离 | mock 100%，live 0% |
-| Phase 5 | Diagnosis / 动作层 | gather → diagnose → execute → sandbox | 代码 75%，live **~40%** |
+| Phase 5 | Diagnosis / 动作层 | gather → diagnose → execute → sandbox | 代码 75%，live **~55%** |
 | MVP 2–5 | 第一版开发方案 | 沙箱 / Skills / Streamlit UI | UI **live**；Skills **live**；沙箱 **W6 live ✅** |
 
 ---
@@ -47,6 +47,9 @@
 | **服务器 live** | k3s 离线恢复；MCP kubeconfig 宿主机 IP；sync 成功 | 7 pods / 65 events → 66 entities |
 | **Prom live** | kube-prometheus NodePort 30909；Prom sync + `top_pods_by_cpu` | entities=7；metrics-server 最高 CPU |
 | **UI live** | Streamlit `:8501`；SSH 隧道；Pods 表含 cpu/memory | 8 pods kube-system；[DEPLOY-UI-LIVE.md](deploy/DEPLOY-UI-LIVE.md) |
+| **P0 one-shot live** | 全栈 install + `verify --full` | `sentinel-x` 2026-06-17；[DEPLOY-ONE-SHOT.md](deploy/DEPLOY-ONE-SHOT.md)、[2026-W25.md](weekly/2026-W25.md) |
+| **W7 inspect trigger live** | `trigger_inspect` → `issues=['CrashLoop']` | 手动 `--pod` 路径；thread `5ad00ee0-…` |
+| **W7 auto patrol live** | MCP `normalize` + patrol 补丁；`crash-demo` auto inspect + cooldown | [`2026-W26.md`](weekly/2026-W26.md)；[`DEPLOY-ALERT-INSPECT.md`](deploy/DEPLOY-ALERT-INSPECT.md) |
 
 **Live sync 关键参数**：见 [DEPLOY-REFERENCE.md](deploy/DEPLOY-REFERENCE.md)（`CLUSTER_ID`、`LANGGRAPH_THREAD_ID` 由 config apply 生成）。
 
@@ -54,7 +57,6 @@
 
 - W2-4 可选 LLM（DashScope timeout）
 - W3 可选 Prom cron（`sentinel-sync-prom.sh`）
-- 新机 one-shot `install-sentinel-x.sh` 独立复验（P0 运维，可选）
 
 ### 3.3 未开始（按 MVP 愿景）
 
@@ -67,14 +69,16 @@
 
 ```text
 [k3s API] ← kubeconfig ← [MCP-K8s] ← docker exec ← [mcp_k8s_sync_live]
+         ← kube-system + sentinel-sandbox cron sync
                                                           ↓
 [Prometheus :30909] ← host.docker.internal ← [MCP-Prom] ← docker exec ← [mcp_prom_sync_live]
                                                           ↓
                                               [langgraph dev :2024]
                                                           ↓
                                     [query / inspect / top_pods_by_cpu / pod_metrics]
-                       │
+                       │                    ↑
               [Streamlit UI :8501]  ← SSH tunnel (W4 live ✅)
+              [sentinel-inspect-patrol.sh] ── cron patrol (W7 live ✅)
 ```
 
 ---
@@ -208,20 +212,20 @@ sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespac
 
 ---
 
-### W7 — P3：告警入口 + 半自动闭环 — **代码已完成**
+### W7 — P3：告警入口 + 半自动闭环 — **live ✅**
 
 **目标**：从「人工 query」到「事件驱动一次诊断」。
 
-**部署文档** → **[DEPLOY-ALERT-INSPECT.md](deploy/DEPLOY-ALERT-INSPECT.md)**
+**部署文档** → **[DEPLOY-ALERT-INSPECT.md](deploy/DEPLOY-ALERT-INSPECT.md)** · live 证据 → **[2026-W25.md §7](weekly/2026-W25.md)**、**[2026-W26.md](weekly/2026-W26.md)**
 
 | 序号 | 任务 | 产出 / 验收 | 状态 |
 |------|------|-------------|------|
-| W7-1 | cron 巡检 → inspect | `src/trigger/` + `sentinel-inspect-patrol.sh` | ✅ 代码 |
-| W7-2 | FastAPI 薄层（可选） | `POST /v1/inspect` + Alertmanager webhook | ✅ 代码 |
+| W7-1 | cron 巡检 → inspect | `src/trigger/` + `sentinel-inspect-patrol.sh` | ✅ live（手动 + **auto patrol**；[`2026-W26.md`](weekly/2026-W26.md)） |
+| W7-2 | FastAPI 薄层（可选） | `POST /v1/inspect` + Alertmanager webhook | ✅ `/health` live；POST inspect / webhook **W8+** |
 | W7-3 | E2E demo | `alert_to_inspect_demo.py` | ✅ 代码 |
-| W7-4 | Phase 2 MVP 评审 | DEPLOY-ALERT-INSPECT §验收清单 | ⏳ live 待勾选 |
+| W7-4 | Phase 2 MVP 评审 | DEPLOY-ALERT-INSPECT §验收清单 | ✅ **核心 4 项**（Alertmanager webhook 仍 W8+） |
 
-**W7 完成标准**：CrashLoop Pod 经 cron patrol 自动触发 inspect（默认 dry_run）；可选 API 与 patrol 共用 `trigger_inspect`。**服务器 live 验收待执行**。
+**W7 完成标准**：CrashLoop Pod 触发 inspect（默认 dry_run）。**已于 2026-06-17 live 验收**（手动 + auto `crash-demo` → `issues=['CrashLoop']`；cooldown — [`2026-W26.md`](weekly/2026-W26.md)）。
 
 ---
 
@@ -244,6 +248,7 @@ sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespac
 | `langgraph dev` 内存 checkpoint，重启丢图 | post-restart hook + cron sync；Phase 2 持久化见 W8+ |
 | 服务器无法访问 GitHub | 本机 scp / 离线包；deploy 文档写清 |
 | MCP 容器内 kubeconfig 127.0.0.1 | 统一宿主机 IP 或 `host.docker.internal` |
+| MCP Pod status 仅 `phase` | CrashLoop 在图中为 `Running`；`normalize.py` 取 waiting reason |
 | k3s RC 版 + 历史无 systemd | `systemctl enable k3s`；考虑 stable 替换 |
 | 评估报告 / README 与代码脱节 | W4 同步更新 |
 
@@ -265,7 +270,9 @@ sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespac
 | W4 | [2026-W22.md](weekly/2026-W22.md) §7 | UI + 部署文档 | **已完成** → [DEPLOY-UI-LIVE.md](deploy/DEPLOY-UI-LIVE.md) |
 | W5 | [2026-W23.md](weekly/2026-W23.md) §7 | Skills | **live 已完成** → [`skills/README.md`](../skills/README.md) |
 | W6 | [2026-W23.md](weekly/2026-W23.md) §7 | 沙箱预演 | **live 已完成** → [`sandbox/README.md`](../sandbox/README.md) |
-| W7 | [2026-W24.md](weekly/2026-W24.md) | 告警 + 半自动闭环 | **代码完成** → [DEPLOY-ALERT-INSPECT.md](deploy/DEPLOY-ALERT-INSPECT.md) |
+| W7 | [2026-W25.md](weekly/2026-W25.md)、[2026-W26.md](weekly/2026-W26.md) | 告警 + 半自动闭环 | **live ✅** → [DEPLOY-ALERT-INSPECT.md](deploy/DEPLOY-ALERT-INSPECT.md) |
+| W26 | [2026-W26.md](weekly/2026-W26.md) | MCP normalize + auto patrol | **live ✅** |
+| P0 | [2026-W25.md](weekly/2026-W25.md) | 一键部署 W1–W7 全栈 | **live ✅** → [DEPLOY-ONE-SHOT.md](deploy/DEPLOY-ONE-SHOT.md) |
 
 ---
 

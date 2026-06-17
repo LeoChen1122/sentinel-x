@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from clients.langgraph_client import query_sentinel
-from trigger.config import PatrolConfig, patrol_config
+from trigger.config import PatrolConfig, patrol_config, patrol_namespaces
 
 # Lower = higher priority
 _SEVERITY_RANK = {
@@ -44,6 +44,27 @@ def _classify_status(status: str) -> tuple[str, str] | None:
     return None
 
 
+_TERMINAL_OK_STATUSES = frozenset({"Succeeded", "Completed", "Pending"})
+
+
+def _event_confirms_active_crashloop(events_result: dict[str, Any]) -> bool:
+    """Strict event check when pod phase is still Running (MCP phase-only fallback)."""
+    events = events_result.get("events") or []
+    for ev in events:
+        if not isinstance(ev, dict):
+            continue
+        props = ev.get("properties") or ev
+        reason = str(props.get("reason") or "").upper()
+        msg = str(props.get("message") or "").upper()
+        if "CRASHLOOPBACKOFF" in reason or "CRASHLOOP" in reason:
+            return True
+        if "CRASH" in reason and "LOOP" in reason:
+            return True
+        if "CRASHLOOPBACKOFF" in msg or "CRASH LOOP" in msg:
+            return True
+    return False
+
+
 def _event_confirms(events_result: dict[str, Any], severity: str) -> bool:
     events = events_result.get("events") or []
     if not events:
@@ -55,18 +76,21 @@ def _event_confirms(events_result: dict[str, Any], severity: str) -> bool:
         reason = str(props.get("reason") or props.get("type") or "").upper()
         msg = str(props.get("message") or "").upper()
         if severity == "CrashLoop" and (
-            "CRASH" in reason or "BACKOFF" in reason or "BACKOFF" in msg
+            "CRASHLOOP" in reason
+            or "CRASH" in reason
+            or "CRASHLOOP" in msg
+            or "CRASH LOOP" in msg
         ):
             return True
         if severity == "ImagePullBackOff" and (
-            "IMAGEPULL" in reason or "ERRIMAGE" in reason or "PULL" in reason
+            "IMAGEPULL" in reason or "ERRIMAGE" in reason or "ERRIMAGEPULL" in reason
         ):
             return True
         if severity == "Error" and reason in ("FAILED", "ERROR"):
             return True
         if severity == "WarningEvents" and str(props.get("type") or "").lower() == "warning":
             return True
-    return severity in ("CrashLoop", "ImagePullBackOff", "Error")
+    return False
 
 
 def find_inspect_candidates(
@@ -98,9 +122,25 @@ def find_inspect_candidates(
         if not name or not ns:
             continue
         classified = _classify_status(status)
-        if not classified:
+        if classified:
+            severity, reason = classified
+            pod_id = str(row.get("id") or f"pod:{cid}:{ns}:{name}")
+            candidates.append(
+                PodCandidate(
+                    cluster_id=cid,
+                    namespace=ns,
+                    pod_name=name,
+                    pod_id=pod_id,
+                    severity=severity,
+                    reason=reason,
+                )
+            )
             continue
-        severity, reason = classified
+        phase = status.strip()
+        if phase in _TERMINAL_OK_STATUSES:
+            continue
+        if phase not in ("Running", "Unknown", ""):
+            continue
         ev = query_sentinel(
             "events_for_pod",
             thread_id=thread_id,
@@ -110,6 +150,18 @@ def find_inspect_candidates(
             name=name,
             tenant_id=tenant_id,
         )
+        events = ev.get("events") or []
+        if not events:
+            continue
+        if _event_confirms_active_crashloop(ev):
+            classified = ("CrashLoop", "CrashLoopBackOff")
+        elif _event_confirms(ev, "ImagePullBackOff"):
+            classified = ("ImagePullBackOff", "ImagePullBackOff")
+        elif _event_confirms(ev, "Error"):
+            classified = ("Error", "Error")
+        else:
+            continue
+        severity, reason = classified
         if not _event_confirms(ev, severity):
             continue
         pod_id = str(row.get("id") or f"pod:{cid}:{ns}:{name}")
@@ -126,6 +178,35 @@ def find_inspect_candidates(
 
     candidates.sort(key=lambda c: (_SEVERITY_RANK.get(c["severity"], 99), c["pod_name"]))
     return candidates
+
+
+def find_inspect_candidates_multi(
+    *,
+    thread_id: str,
+    cluster_id: str,
+    namespaces: list[str] | tuple[str, ...] | None = None,
+    client: Any | None = None,
+    tenant_id: str | None = None,
+) -> list[PodCandidate]:
+    """Scan multiple namespaces; merge and dedupe by pod_id."""
+    ns_list = list(namespaces) if namespaces else list(patrol_namespaces())
+    seen: set[str] = set()
+    merged: list[PodCandidate] = []
+    for ns in ns_list:
+        for cand in find_inspect_candidates(
+            thread_id=thread_id,
+            cluster_id=cluster_id,
+            namespace=ns,
+            client=client,
+            tenant_id=tenant_id,
+        ):
+            pid = cand["pod_id"]
+            if pid in seen:
+                continue
+            seen.add(pid)
+            merged.append(cand)
+    merged.sort(key=lambda c: (_SEVERITY_RANK.get(c["severity"], 99), c["pod_name"]))
+    return merged
 
 
 def load_patrol_state(path: Path | None = None) -> dict[str, float]:
