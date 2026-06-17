@@ -103,7 +103,7 @@ curl -s -X POST http://127.0.0.1:8080/v1/inspect \
   -d '{"pod_name":"sentinel-crash-test","namespace":"kube-system","dry_run":true}'
 ```
 
-SSH 隧道（本机调试）：`ssh -L 8080:127.0.0.1:8080 root@<host>`
+SSH 隧道（本机调试）：`ssh -L 808 0:127.0.0.1:8080 root@<host>`
 
 ### 4.3 Alertmanager webhook 示例
 
