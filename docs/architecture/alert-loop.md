@@ -25,7 +25,7 @@ flowchart LR
 | Cron patrol | `sentinel-inspect-patrol.sh` → `run_patrol()` | Live |
 | Manual inspect | `trigger_inspect()` | Live |
 | POST `/v1/inspect` | `apps/api/src/routes/inspect.py` | Live |
-| Alertmanager webhook | `apps/api/src/routes/webhooks.py` | Code complete; live pending |
+| Alertmanager webhook | `apps/api/src/routes/webhooks.py` | Live — [DEPLOY-ALERTMANAGER-WEBHOOK.md](../deploy/DEPLOY-ALERTMANAGER-WEBHOOK.md) |
 
 ## Graph pipeline
 

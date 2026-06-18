@@ -72,6 +72,7 @@ find /opt/sentinel-x/deploy -name '*.sh' -exec sed -i 's/\r$//' {} +
 | 6 | （可选 W3）Prom metrics sync | [DEPLOY-PROM-SYNC.md](DEPLOY-PROM-SYNC.md) |
 | 7 | Live inspect 验收 | [DEPLOY-INSPECT-LIVE.md](DEPLOY-INSPECT-LIVE.md) |
 | 8 | （W4）Streamlit UI | **[DEPLOY-UI-LIVE.md](DEPLOY-UI-LIVE.md)**（scp、SSH 隧道、验收） |
+| 9 | （W8）Alertmanager webhook | **[DEPLOY-ALERTMANAGER-WEBHOOK.md](DEPLOY-ALERTMANAGER-WEBHOOK.md)** |
 
 **deploy 脚本模板**：[`deploy/README.md`](../deploy/README.md)（systemd unit、cron、sync shell）。
 
@@ -137,5 +138,6 @@ W4 UI：见 [DEPLOY-UI-LIVE.md](DEPLOY-UI-LIVE.md)
 | [DEPLOY-PROMETHEUS-K3S.md](DEPLOY-PROMETHEUS-K3S.md) | W3 前置：离线 kube-prometheus |
 | [DEPLOY-PROM-SYNC.md](DEPLOY-PROM-SYNC.md) | W3 Prom 指标 enrichment |
 | [DEPLOY-UI-LIVE.md](DEPLOY-UI-LIVE.md) | W4 Streamlit UI 服务器部署 |
+| [DEPLOY-ALERTMANAGER-WEBHOOK.md](DEPLOY-ALERTMANAGER-WEBHOOK.md) | W8 Alertmanager → inspect webhook |
 | [ROADMAP.md](ROADMAP.md) | 周计划与进度 |
 | [apps/ui/README.md](../apps/ui/README.md) | Streamlit 简要说明 |

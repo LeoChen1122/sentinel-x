@@ -64,6 +64,8 @@ deploy/
 |------|-------|
 | [`prometheus/install-kube-prometheus-offline.sh`](prometheus/install-kube-prometheus-offline.sh) | **canonical** (dist/ is copy-only) |
 | [`prometheus/kube-prometheus-values-minimal.yaml`](prometheus/kube-prometheus-values-minimal.yaml) | NodePort 30909 values |
+| [`prometheus/sentinel-alertmanager-receiver.example.yaml`](prometheus/sentinel-alertmanager-receiver.example.yaml) | Alertmanager → Sentinel webhook (Helm values) |
+| [`prometheus/sentinel-crashloop-prometheusrule.example.yaml`](prometheus/sentinel-crashloop-prometheusrule.example.yaml) | CrashLoopBackOff PrometheusRule |
 | [`prometheus/prepare-kube-prometheus-offline.ps1`](prometheus/prepare-kube-prometheus-offline.ps1) | Windows offline bundle prep |
 
 ## verify/

@@ -1,0 +1,45 @@
+# Helm values fragment: Alertmanager receiver → Sentinel-X API webhook.
+# Merge with kube-prometheus-values-minimal.yaml when enabling Alertmanager (see
+# docs/deploy/DEPLOY-ALERTMANAGER-WEBHOOK.md).
+#
+# Manual curl from the host uses http://127.0.0.1:8080/v1/webhooks/alertmanager.
+# Alertmanager runs in-cluster; the webhook URL must reach the host systemd API
+# (not the pod's 127.0.0.1). On single-node k3s, set SENTINEL_API_WEBHOOK_URL to
+# http://<host-ip>:8080/v1/webhooks/alertmanager before helm upgrade, or use
+# alertmanager.hostNetwork: true so 127.0.0.1:8080 works.
+
+alertmanager:
+  enabled: true
+  # Uncomment on single-node k3s if webhook URL stays http://127.0.0.1:8080/...
+  # hostNetwork: true
+  # dnsPolicy: ClusterFirstWithHostNet
+  config:
+    route:
+      receiver: sentinel-x
+      group_by: ["namespace", "pod"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - matchers:
+            - alertname = Watchdog
+          receiver: "null"
+          continue: false
+        - matchers:
+            - alertname =~ "SentinelPodCrashLoop|KubePodCrashLooping"
+          receiver: sentinel-x
+          group_wait: 10s
+          group_interval: 1m
+          repeat_interval: 1h
+    receivers:
+      - name: "null"
+      - name: sentinel-x
+        webhook_configs:
+          # Replace HOST_IP when Alertmanager pod cannot use hostNetwork.
+          - url: http://127.0.0.1:8080/v1/webhooks/alertmanager
+            send_resolved: false
+            # When SENTINEL_API_TOKEN is set on sentinel-api:
+            # http_config:
+            #   authorization:
+            #     type: Bearer
+            #     credentials: "<same-as-SENTINEL_API_TOKEN>"

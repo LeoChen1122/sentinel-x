@@ -108,15 +108,24 @@ curl -s -X POST http://127.0.0.1:8080/v1/inspect \
 
 SSH 隧道（本机调试）：`ssh -L 8080:127.0.0.1:8080 root@<host>`
 
-### 4.3 Alertmanager webhook 示例
+### 4.3 Alertmanager webhook
 
-```yaml
-receivers:
-  - name: sentinel-x
-    webhook_configs:
-      - url: http://127.0.0.1:8080/v1/webhooks/alertmanager
-        send_resolved: false
+完整步骤（手工 curl 主验收 + 可选 Prom 规则）：**[DEPLOY-ALERTMANAGER-WEBHOOK.md](DEPLOY-ALERTMANAGER-WEBHOOK.md)**
+
+手工样本（host 本机）：
+
+```bash
+POD=$(kubectl get pods -n sentinel-sandbox -l app=crash-demo -o jsonpath='{.items[0].metadata.name}')
+curl -s -X POST http://127.0.0.1:8080/v1/webhooks/alertmanager \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer ${SENTINEL_API_TOKEN}" \
+  -d "{\"status\":\"firing\",\"alerts\":[{\"status\":\"firing\",\"labels\":{\"alertname\":\"PodCrashLooping\",\"pod\":\"${POD}\",\"namespace\":\"sentinel-sandbox\"}}]}"
 ```
+
+Repo 内 Helm / Prom 示例：
+
+- [`deploy/prometheus/sentinel-alertmanager-receiver.example.yaml`](../../deploy/prometheus/sentinel-alertmanager-receiver.example.yaml)
+- [`deploy/prometheus/sentinel-crashloop-prometheusrule.example.yaml`](../../deploy/prometheus/sentinel-crashloop-prometheusrule.example.yaml)
 
 告警 labels 需含 `pod`；`namespace` 可选（默认 `kube-system`）。
 
@@ -144,7 +153,7 @@ python .../alert_to_inspect_demo.py --mode api --pod sentinel-crash-test --dry-r
 - [x] 默认 `SENTINEL_PATROL_DRY_RUN=true`（无生产写）
 - [x] cooldown：同 Pod 二次 patrol → `status: cooldown`（`inspect-patrol-state.json`）
 - [x] （可选）`POST /v1/inspect` 与 patrol 结果一致
-- [ ] （可选）Alertmanager webhook 解析 `pod` label 并 trigger
+- [x] （可选）Alertmanager webhook 解析 `pod` label 并 trigger — 见 [DEPLOY-ALERTMANAGER-WEBHOOK.md](DEPLOY-ALERTMANAGER-WEBHOOK.md) Step 1 curl
 - [ ] 查 / 判 / 试 / 记：stream 含 `diagnosis`、`execution`；`dry_run=false` 时含 `sandbox_result`
 
 ---
@@ -182,3 +191,6 @@ python .../alert_to_inspect_demo.py --mode api --pod sentinel-crash-test --dry-r
 | [`scripts/live/inspect_patrol_live.py`](../../agents/langgraph-integration/scripts/live/inspect_patrol_live.py) | Live patrol CLI |
 | [`deploy/sync/sentinel-inspect-patrol.sh`](../../deploy/sync/sentinel-inspect-patrol.sh) | cron 入口 |
 | [`apps/api/`](../../apps/api/) | FastAPI Webhook 薄层 |
+| [`deploy/prometheus/sentinel-alertmanager-receiver.example.yaml`](../../deploy/prometheus/sentinel-alertmanager-receiver.example.yaml) | Alertmanager receiver 示例 |
+| [`deploy/prometheus/sentinel-crashloop-prometheusrule.example.yaml`](../../deploy/prometheus/sentinel-crashloop-prometheusrule.example.yaml) | CrashLoop PrometheusRule |
+| [DEPLOY-ALERTMANAGER-WEBHOOK.md](DEPLOY-ALERTMANAGER-WEBHOOK.md) | webhook curl + Prom 联调 |

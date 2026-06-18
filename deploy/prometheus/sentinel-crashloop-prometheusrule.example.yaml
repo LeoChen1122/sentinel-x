@@ -1,0 +1,36 @@
+# PrometheusRule: CrashLoopBackOff → labels pod + namespace for Sentinel webhook.
+# Requires kube-state-metrics (kube_pod_container_status_waiting_reason).
+# Default minimal Prom stack disables KSM — enable before applying (see
+# docs/deploy/DEPLOY-ALERTMANAGER-WEBHOOK.md §Optional Prom E2E).
+#
+#   kubectl apply -f deploy/prometheus/sentinel-crashloop-prometheusrule.example.yaml
+#
+# Labels `pod` and `namespace` come from the PromQL metric and are forwarded to
+# Alertmanager; apps/api/webhooks.py reads labels.pod and labels.namespace.
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sentinel-crashloop
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: sentinel-x
+    # Must match kube-prometheus Helm release (install default: kube-prom)
+    release: kube-prom
+spec:
+  groups:
+    - name: sentinel-crashloop
+      rules:
+        - alert: SentinelPodCrashLoop
+          expr: |
+            max_over_time(
+              kube_pod_container_status_waiting_reason{reason="CrashLoopBackOff"}[5m]
+            ) >= 1
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash looping"
+            description: |
+              Container {{ $labels.container }} in pod {{ $labels.namespace }}/{{ $labels.pod }}
+              has been in CrashLoopBackOff for at least 2 minutes.
